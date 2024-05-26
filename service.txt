@@ -1,0 +1,24 @@
+sudo nano /etc/systemd/system/myscript.service
+
+[Unit]
+Description=Il mio script Python
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /percorso/al/tuo/script.py
+WorkingDirectory=/percorso/al/tuo/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+
+
+sudo systemctl daemon-reload
+
+sudo systemctl enable myscript.service
+
+
+sudo systemctl start myscript.service
