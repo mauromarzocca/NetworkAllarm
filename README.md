@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-- Versione : 6.9
+- Versione : 6.9.1
 
  ---
 
@@ -167,6 +167,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 6.6 : Implementato l'invio del Log Giornaliero tramite un pulsante nel Bot.
 - Versione 6.8 : Migliorata la visualizazzione del Bot
 - Versione 6.9 : Bug Fix e impostata la cancellazione automatica dei messaggi dopo sette giorni.
+- Versione 6.9.1 : Bug Fix.
 
 ---
 
