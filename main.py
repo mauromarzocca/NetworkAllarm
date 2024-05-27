@@ -31,8 +31,8 @@ async def invia_messaggi_divisi(messaggio, chat_id):
     bot = Bot(token=config.bot_token)
     try:
         righe = messaggio.split('\n')
-        for i in range(0, len(righe), 8):
-            parte = '\n'.join(righe[i:i+8])
+        for i in range(0, len(righe), 10):
+            parte = '\n'.join(righe[i:i+10])
             messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte)
             # Programma la cancellazione del messaggio dopo 7 giorni
             asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, 7 * 24 * 60 * 60))
@@ -95,9 +95,7 @@ async def invia_file_testuale():
     
     if ora_corrente.hour == 0 and ora_corrente.minute == 0:
         print("Invio del contenuto del file testuale del giorno precedente.")
-        scrivi_log("Fine giornata")  # Aggiungi la fine della giornata al log del giorno precedente
         await invia_contenuto_file()
-        scrivi_log("Inizio giornata")  # Aggiungi l'inizio della giornata al nuovo file di log
 
 async def invia_contenuto_file():
     """Invia il contenuto del file testuale del giorno precedente."""
@@ -167,10 +165,9 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if not modalita_manutenzione:
         modalita_manutenzione = True
-        scrivi_log("Avvio Manutenzione")
-        await invia_messaggio("🔧 Modalità manutenzione attivata.", update.effective_chat.id)
-    else:
-        await invia_messaggio("La modalità manutenzione è già attivata.", update.effective_chat.id)
+        scrivi_log("Inizio manutenzione")
+        await invia_messaggio("🔧 Inizio manutenzione", config.chat_id)
+        await aggiorna_messaggio_stato(update.effective_chat.id)
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Termina la modalità manutenzione."""
@@ -178,82 +175,183 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if modalita_manutenzione:
         modalita_manutenzione = False
-        scrivi_log("Fine Manutenzione")
-        await invia_messaggio("✅ Modalità manutenzione disattivata.", update.effective_chat.id)
-    else:
-        await invia_messaggio("La modalità manutenzione non era attivata.", update.effective_chat.id)
+        scrivi_log("Fine manutenzione")
+        await invia_messaggio("✅ Fine manutenzione", config.chat_id)
+        await aggiorna_messaggio_stato(update.effective_chat.id)
 
-async def stato_connessione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Controlla lo stato della connessione e aggiorna il messaggio di stato."""
+async def aggiorna_messaggio_stato(chat_id):
+    """Aggiorna il messaggio di stato."""
     global messaggio_stato_id
-    global allarme_attivo
-
-    stato_dispositivi = []
-
-    for dispositivo in config.dispositivi:
-        nome = dispositivo["nome"]
-        indirizzo_ip = dispositivo["indirizzo_ip"]
-        stato = controlla_connessione(indirizzo_ip)
-        stato_dispositivi.append((nome, indirizzo_ip, stato))
-        
-        if not stato and not modalita_manutenzione:
-            if not allarme_attivo:
-                allarme_attivo = True
-                scrivi_log("Dispositivo non raggiungibile", nome, indirizzo_ip)
-                await invia_messaggio(f"⚠️ Attenzione! {nome} ({indirizzo_ip}) non è raggiungibile.", config.chat_id)
-        elif stato and allarme_attivo:
-            allarme_attivo = False
-            scrivi_log("Dispositivo tornato raggiungibile", nome, indirizzo_ip)
-            await invia_messaggio(f"✅ {nome} ({indirizzo_ip}) è tornato raggiungibile.", config.chat_id)
-
-    messaggio_stato = "Stato dei dispositivi:\n" + "\n".join(
-        [f"{nome} ({indirizzo_ip}): {'Online' if stato else 'Offline'}" for nome, indirizzo_ip, stato in stato_dispositivi]
-    )
     
-    if messaggio_stato_id is None:
-        messaggio_stato_id = await invia_messaggio(messaggio_stato, update.effective_chat.id)
+    stato = "Modalità Manutenzione: Attiva" if modalita_manutenzione else "Modalità Manutenzione: Non Attiva"
+    
+    if messaggio_stato_id:
+        await modifica_messaggio(chat_id, messaggio_stato_id, stato)
     else:
-        await modifica_messaggio(update.effective_chat.id, messaggio_stato_id, messaggio_stato)
+        messaggio_stato_id = await invia_messaggio(stato, chat_id)
 
-async def log_corrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Invia il log corrente fino a quel momento."""
-    await invia_log_corrente(update.effective_chat.id)
+def utente_autorizzato(user_id):
+    """Controlla se l'utente è autorizzato."""
+    return user_id in config.autorizzati
+
+def get_keyboard():
+    """Restituisce la tastiera inline con i pulsanti di comando."""
+    button_list = [
+        InlineKeyboardButton("🔧 Inizio Manutenzione", callback_data='inizio_manutenzione'),
+        InlineKeyboardButton("✅ Fine Manutenzione", callback_data='fine_manutenzione'),
+        InlineKeyboardButton("📈 Stato Connessioni", callback_data='stato_connessioni'),
+        InlineKeyboardButton("📝 Log Giornaliero", callback_data='log_giornaliero')
+    ]
+    
+    return InlineKeyboardMarkup([button_list[:2], button_list[2:]])
+
+def get_custom_keyboard():
+    """Restituisce la tastiera personalizzata con i pulsanti del menu."""
+    button_list = [
+        KeyboardButton("🔧 Inizio Manutenzione"),
+        KeyboardButton("✅ Fine Manutenzione"),
+        KeyboardButton("📈 Stato Connessioni"),
+        KeyboardButton("📝 Log Giornaliero")
+    ]
+    
+    return ReplyKeyboardMarkup([button_list[:2], button_list[2:]], resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce il comando /start."""
-    keyboard = [
-        [KeyboardButton("/start")],
-        [KeyboardButton("/stato")],
-        [KeyboardButton("/avvia_manutenzione")],
-        [KeyboardButton("/termina_manutenzione")],
-        [KeyboardButton("/log_corrente")]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard)
-    await update.message.reply_text("Benvenuto! Usa i comandi per interagire con il bot.", reply_markup=reply_markup)
+    user = update.message.from_user
+    if utente_autorizzato(user.id):
+        await update.message.reply_text(
+            'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
+            reply_markup=get_custom_keyboard()
+        )
+        await aggiorna_messaggio_stato(update.message.chat_id)
+    else:
+        await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
 
-async def monitoraggio():
-    """Esegue il monitoraggio periodico dei dispositivi e l'invio dei log a mezzanotte."""
-    while True:
-        # Esegui il controllo della connessione per ogni dispositivo
-        await stato_connessione(None, None)
-        # Invia il file testuale a mezzanotte
-        await invia_file_testuale()
-        # Attendi 60 secondi prima del prossimo controllo
-        await asyncio.sleep(60)
+async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mostra il menu dei comandi."""
+    chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
+    await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
 
-if __name__ == "__main__":
-    # Inizializza il bot
-    applicazione = ApplicationBuilder().token(config.bot_token).build()
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce i pulsanti inline."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == 'inizio_manutenzione' and not modalita_manutenzione:
+        await avvia_manutenzione(update, context)
+    elif query.data == 'fine_manutenzione' and modalita_manutenzione:
+        await termina_manutenzione(update, context)
+    elif query.data == 'stato_connessioni':
+        await verifica_stato_connessioni(update, context)
+    elif query.data == 'log_giornaliero':
+        await invia_log_giornaliero(update, context)
 
-    # Aggiungi i gestori di comando
-    applicazione.add_handler(CommandHandler("start", start))
-    applicazione.add_handler(CommandHandler("stato", stato_connessione))
-    applicazione.add_handler(CommandHandler("avvia_manutenzione", avvia_manutenzione))
-    applicazione.add_handler(CommandHandler("termina_manutenzione", termina_manutenzione))
-    applicazione.add_handler(CommandHandler("log_corrente", log_corrente))
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce i pulsanti della tastiera personalizzata."""
+    text = update.message.text
+    
+    if text == "🔧 Inizio Manutenzione":
+        await avvia_manutenzione(update, context)
+    elif text == "✅ Fine Manutenzione":
+        await termina_manutenzione(update, context)
+    elif text == "📈 Stato Connessioni":
+        await verifica_stato_connessioni(update, context)
+    elif text == "📝 Log Giornaliero":
+        await invia_log_giornaliero(update, context)
 
-    # Avvia il monitoraggio in background
-    applicazione.job_queue.run_once(monitoraggio, 1)
+async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verifica lo stato delle connessioni e invia un messaggio con i risultati all'utente."""
+    stati_connessioni = []
+    for dispositivo in config.indirizzi_ping:
+        nome_dispositivo = dispositivo['nome']
+        indirizzo_ip = dispositivo['indirizzo']
+        stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
+        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato}")
+    
+    messaggio = "\n".join(stati_connessioni)
+    await invia_messaggio(messaggio, update.message.chat_id)
 
-    # Avvia il bot
-    applicazione.run_polling()
+async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Invia il log della giornata corrente fino a quel momento all'utente."""
+    chat_id = update.message.chat_id
+    await invia_log_corrente(chat_id)
+
+def main():
+    """Funzione principale per avviare il bot."""
+    application = ApplicationBuilder().token(config.bot_token).build()
+    
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("menu", mostra_menu))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero)$"), button_handler))
+
+    async def monitoraggio():
+        """La funzione principale di monitoraggio"""
+        scrivi_log("Avvio dello script")
+        
+        stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
+        global allarme_attivo
+
+        while True:
+            if not modalita_manutenzione:
+                tutti_offline = True
+
+                for dispositivo in config.indirizzi_ping:
+                    nome_dispositivo = dispositivo['nome']
+                    indirizzo_ip = dispositivo['indirizzo']
+                    tentativi = 0
+
+                    while tentativi < 2:
+                        connessione_attuale = controlla_connessione(indirizzo_ip)
+                        
+                        if connessione_attuale:
+                            if not stato_connessioni[indirizzo_ip]:
+                                await invia_messaggio(
+                                    f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
+                                    config.chat_id)
+                                scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
+                                stato_connessioni[indirizzo_ip] = True
+                            break
+                        else:
+                            tentativi += 1
+                            await asyncio.sleep(30)
+
+                    if not connessione_attuale and stato_connessioni[indirizzo_ip]:
+                        await invia_messaggio(
+                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
+                            config.chat_id)
+                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                        stato_connessioni[indirizzo_ip] = False
+
+                    # Se almeno un dispositivo è online, non attiviamo l'allarme.
+                    if connessione_attuale:
+                        tutti_offline = False
+
+                # Se tutti i dispositivi sono offline e l'allarme non è già attivo.
+                if tutti_offline and not allarme_attivo:
+                    allarme_attivo = True
+
+                # Se almeno un dispositivo è online e l'allarme è attivo.
+                elif not tutti_offline and allarme_attivo:
+                    allarme_attivo = False
+
+                # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
+                if allarme_attivo:
+                    await invia_messaggio(
+                        "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
+                        config.chat_id)
+
+            await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
+            await invia_file_testuale()
+
+    async def avvio_monitoraggio():
+        await monitoraggio()
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(avvio_monitoraggio())
+
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
