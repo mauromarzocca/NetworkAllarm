@@ -89,67 +89,16 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
 
-            
-async def aggiorna_log_giornaliero():
-    
-    await invia_contenuto_file()
-    await crea_nuovo_log()
-
-""" async def aggiorna_log_giornaliero():
-    # Aggiorna il log giornaliero a mezzanotte.
-    ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
-        #await invia_messaggio("Inviando log giornaliero e inizializzando un nuovo log...", config.chat_id)
-        # scrivi_log("Fine giornata")  # Scrive "Fine giornata" sull'ultimo log
-        await invia_contenuto_file()  # Invia il log giornaliero
-        #await invia_messaggio("Log giornaliero inviato e nuovo log inizializzato.", config.chat_id)
-        await crea_nuovo_log()  # Crea un nuovo log e scrive "Inizio giornata" """
-
 async def invia_file_testuale():
-    # Invia il contenuto del file testuale del giorno precedente a mezzanotte.
+    #Invia il contenuto del file testuale del giorno precedente a mezzanotte.
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    #if ora_corrente.hour == 20 and ora_corrente.minute == 45:
-        
-
+    
     if ora_corrente.hour == 0 and ora_corrente.minute == 0:
-        ora_corrente = datetime.now().strftime('%H:%M:%S')
-        anno_corrente = datetime.now().strftime('%Y')
-        mese_corrente = datetime.now().strftime('%m')
-        cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-        data_corrente = datetime.now().strftime('%Y-%m-%d')
-
-        nome_file = f"{cartella_log}/{data_corrente}.txt"
-        evento = f"{ora_corrente} - Fine giornata"
-
-        with open(nome_file, 'a') as file:
-            file.write(evento + '\n')
-
         print("Invio del contenuto del file testuale del giorno precedente.")
-        await aggiorna_log_giornaliero()  # Aggiorna il log giornaliero
-
-def crea_nuovo_log():
-    # Crea un nuovo log e ci scrive "<Orario> - Inizio Giornata".
-    ora_corrente = datetime.now().strftime('%H:%M:%S')
-    data_corrente = datetime.now().strftime('%Y-%m-%d')
-
-    # Suddivisione in cartelle per anno e mese
-    anno_corrente = datetime.now().strftime('%Y')
-    mese_corrente = datetime.now().strftime('%m')
-
-    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-
-    if not os.path.exists(cartella_log):
-        os.makedirs(cartella_log)
-
-    nome_file = f"{cartella_log}/{data_corrente}.txt"
-    evento = f"{ora_corrente} - Inizio giornata"
-
-    with open(nome_file, 'a') as file:
-        file.write(evento + '\n')
-
+        await invia_contenuto_file()
 
 async def invia_contenuto_file():
-    # Invia il contenuto del file testuale del giorno precedente.
+    #Invia il contenuto del file testuale del giorno precedente.
     print("Invio del contenuto del file testuale del giorno precedente.")
     
     data_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -166,15 +115,14 @@ async def invia_contenuto_file():
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
 
-        # Inseriamo "Fine giornata" come ultima riga del file precedente
-        contenuto_file.append(f"{datetime.now().strftime('%H:%M:%S')} - Fine giornata\n")
+        # Escludo le stringhe di inizio e fine giornata se presenti
+        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
 
-        # Invia il contenuto del file precedente
-        if len(contenuto_file) == 1 and "Avvio dello script" in contenuto_file[0]:
+        if len(contenuto_da_inviare) == 1 and "Avvio dello script" in contenuto_da_inviare[0]:
             print("Nessun evento da segnalare.")
             await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
-        elif contenuto_file:
-            contenuto_da_inviare = '\n'.join(contenuto_file)
+        elif contenuto_da_inviare:
+            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
             print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
             await invia_messaggi_divisi(contenuto_da_inviare, config.chat_id)
         else:
