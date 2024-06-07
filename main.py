@@ -108,24 +108,26 @@ async def aggiorna_log_giornaliero():
 async def invia_file_testuale():
     # Invia il contenuto del file testuale del giorno precedente a mezzanotte.
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    #if ora_corrente.hour == 20 and ora_corrente.minute == 45:
-        
 
-    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
-        ora_corrente = datetime.now().strftime('%H:%M:%S')
-        anno_corrente = datetime.now().strftime('%Y')
-        mese_corrente = datetime.now().strftime('%m')
+    if ora_corrente.hour == 0 and ora_corrente.minute in [0, 1]:  # Controlla se è mezzanotte o l'ora è vicina a mezzanotte
+        ora_corrente_str = ora_corrente.strftime('%H:%M:%S')
+        anno_corrente = ora_corrente.strftime('%Y')
+        mese_corrente = ora_corrente.strftime('%m')
         cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-        data_corrente = datetime.now().strftime('%Y-%m-%d')
+        data_corrente = ora_corrente.strftime('%Y-%m-%d')
+
+        # Crea la cartella se non esiste
+        os.makedirs(cartella_log, exist_ok=True)
 
         nome_file = f"{cartella_log}/{data_corrente}.txt"
-        evento = f"{ora_corrente} - Fine giornata"
+        evento = f"{ora_corrente_str} - Fine giornata"
 
         with open(nome_file, 'a') as file:
             file.write(evento + '\n')
 
         print("Invio del contenuto del file testuale del giorno precedente.")
         await aggiorna_log_giornaliero()  # Aggiorna il log giornaliero
+
 
 def crea_nuovo_log():
     # Crea un nuovo log e ci scrive "<Orario> - Inizio Giornata".
