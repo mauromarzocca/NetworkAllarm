@@ -1,6 +1,7 @@
 import subprocess
 import asyncio
 import os
+import time
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -130,7 +131,12 @@ async def invia_file_testuale():
 
 
 def crea_nuovo_log():
-    # Crea un nuovo log e ci scrive "<Orario> - Inizio Giornata".
+    # Funzione per creare un nuovo log con la prima riga "<Orario> - Inizio Giornata".
+    def create_log_file(file_path, event):
+        with open(file_path, 'a') as file:
+            file.write(event + '\n')
+        print(f"File {file_path} creato con l'evento: {event}")
+
     ora_corrente = datetime.now().strftime('%H:%M:%S')
     data_corrente = datetime.now().strftime('%Y-%m-%d')
 
@@ -146,8 +152,20 @@ def crea_nuovo_log():
     nome_file = f"{cartella_log}/{data_corrente}.txt"
     evento = f"{ora_corrente} - Inizio giornata"
 
-    with open(nome_file, 'a') as file:
-        file.write(evento + '\n')
+    # Tempo limite per i controlli: 00:05 del giorno successivo
+    end_time = datetime.combine(datetime.today() + timedelta(days=1), datetime.min.time()) + timedelta(minutes=5)
+
+    while datetime.now() < end_time:
+        if os.path.exists(nome_file):
+            print(f"Il file {nome_file} esiste già.")
+            return
+        else:
+            print(f"Il file {nome_file} non esiste, controllo di nuovo tra 30 secondi...")
+            time.sleep(30)
+    
+    # Se il file non è stato trovato entro le 00:05, crearlo
+    if not os.path.exists(nome_file):
+        create_log_file(nome_file, evento)
 
 
 async def invia_contenuto_file():
