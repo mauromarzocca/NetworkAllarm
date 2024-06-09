@@ -130,13 +130,13 @@ async def invia_file_testuale():
         await aggiorna_log_giornaliero()  # Aggiorna il log giornaliero
 
 
-def crea_nuovo_log():
-    # Funzione per creare un nuovo log con la prima riga "<Orario> - Inizio Giornata".
-    def create_log_file(file_path, event):
-        with open(file_path, 'a') as file:
-            file.write(event + '\n')
-        print(f"File {file_path} creato con l'evento: {event}")
+def create_log_file(file_path, event):
+    with open(file_path, 'a') as file:
+        file.write(event + '\n')
+    print(f"File {file_path} creato con l'evento: {event}")
 
+async def crea_nuovo_log():
+    # Funzione per creare un nuovo log con la prima riga "<Orario> - Inizio Giornata".
     ora_corrente = datetime.now().strftime('%H:%M:%S')
     data_corrente = datetime.now().strftime('%Y-%m-%d')
 
@@ -161,11 +161,23 @@ def crea_nuovo_log():
             return
         else:
             print(f"Il file {nome_file} non esiste, controllo di nuovo tra 30 secondi...")
-            time.sleep(30)
+            await asyncio.sleep(30)
     
     # Se il file non è stato trovato entro le 00:05, crearlo
     if not os.path.exists(nome_file):
         create_log_file(nome_file, evento)
+
+async def controllo_log():
+    while True:
+        now = datetime.now()
+        # Calcola il tempo fino a un minuto dopo la mezzanotte
+        if now.hour == 0 and now.minute == 1:
+            await crea_nuovo_log()
+        
+        # Attendi un minuto prima di rieseguire il controllo
+        await asyncio.sleep(60)
+
+
 
 
 async def invia_contenuto_file():
@@ -359,66 +371,70 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero)$"), button_handler))
 
     async def monitoraggio():
-        #La funzione principale di monitoraggio
-        scrivi_log("Avvio dello script")
-        
-        stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
-        global allarme_attivo
-
         while True:
-            if not modalita_manutenzione:
-                tutti_offline = True
+            #La funzione principale di monitoraggio
+            scrivi_log("Avvio dello script")
+            
+            stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
+            global allarme_attivo
 
-                for dispositivo in config.indirizzi_ping:
-                    nome_dispositivo = dispositivo['nome']
-                    indirizzo_ip = dispositivo['indirizzo']
-                    tentativi = 0
+            while True:
+                if not modalita_manutenzione:
+                    tutti_offline = True
 
-                    while tentativi < 2:
-                        connessione_attuale = controlla_connessione(indirizzo_ip)
-                        
+                    for dispositivo in config.indirizzi_ping:
+                        nome_dispositivo = dispositivo['nome']
+                        indirizzo_ip = dispositivo['indirizzo']
+                        tentativi = 0
+
+                        while tentativi < 2:
+                            connessione_attuale = controlla_connessione(indirizzo_ip)
+                            
+                            if connessione_attuale:
+                                if not stato_connessioni[indirizzo_ip]:
+                                    await invia_messaggio(
+                                        f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
+                                        config.chat_id)
+                                    scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
+                                    stato_connessioni[indirizzo_ip] = True
+                                break
+                            else:
+                                tentativi += 1
+                                await asyncio.sleep(30)
+
+                        if not connessione_attuale and stato_connessioni[indirizzo_ip]:
+                            await invia_messaggio(
+                                f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
+                                config.chat_id)
+                            scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                            stato_connessioni[indirizzo_ip] = False
+
+                        # Se almeno un dispositivo è online, non attiviamo l'allarme.
                         if connessione_attuale:
-                            if not stato_connessioni[indirizzo_ip]:
-                                await invia_messaggio(
-                                    f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
-                                    config.chat_id)
-                                scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
-                                stato_connessioni[indirizzo_ip] = True
-                            break
-                        else:
-                            tentativi += 1
-                            await asyncio.sleep(30)
+                            tutti_offline = False
 
-                    if not connessione_attuale and stato_connessioni[indirizzo_ip]:
+                    # Se tutti i dispositivi sono offline e l'allarme non è già attivo.
+                    if tutti_offline and not allarme_attivo:
+                        allarme_attivo = True
+
+                    # Se almeno un dispositivo è online e l'allarme è attivo.
+                    elif not tutti_offline and allarme_attivo:
+                        allarme_attivo = False
+
+                    # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
+                    if allarme_attivo:
                         await invia_messaggio(
-                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
+                            "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
                             config.chat_id)
-                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                        stato_connessioni[indirizzo_ip] = False
 
-                    # Se almeno un dispositivo è online, non attiviamo l'allarme.
-                    if connessione_attuale:
-                        tutti_offline = False
-
-                # Se tutti i dispositivi sono offline e l'allarme non è già attivo.
-                if tutti_offline and not allarme_attivo:
-                    allarme_attivo = True
-
-                # Se almeno un dispositivo è online e l'allarme è attivo.
-                elif not tutti_offline and allarme_attivo:
-                    allarme_attivo = False
-
-                # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
-                if allarme_attivo:
-                    await invia_messaggio(
-                        "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
-                        config.chat_id)
-
-            await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
-            await invia_file_testuale()
+                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
+                await invia_file_testuale()
 
     async def avvio_monitoraggio():
-        await monitoraggio()
+        await asyncio.gather(
+        monitoraggio(),
+        controllo_log()
+    )
 
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())
