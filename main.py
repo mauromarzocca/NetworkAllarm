@@ -49,13 +49,13 @@ async def cancella_messaggio_dopo_delay(chat_id, message_id, delay):
     except Exception as e:
         print(f"Errore durante la cancellazione del messaggio: {e}")
 
-""" async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
+async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
     #Modifica un messaggio esistente.
     bot = Bot(token=config.bot_token)
     try:
         await bot.edit_message_text(chat_id=chat_id, message_id=messaggio_id, text=nuovo_testo)
     except Exception as e:
-        print(f"Errore durante la modifica del messaggio: {e}") """
+        print(f"Errore durante la modifica del messaggio: {e}")
 
 def controlla_connessione(indirizzo):
     #Effettua un ping per controllare lo stato della connessione.
@@ -176,8 +176,6 @@ async def controllo_log():
         
         # Attendi un minuto prima di rieseguire il controllo
         await asyncio.sleep(60)
-
-
 
 
 async def invia_contenuto_file():
