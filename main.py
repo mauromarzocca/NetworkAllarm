@@ -1,7 +1,6 @@
 import subprocess
 import asyncio
 import os
-import time
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -90,96 +89,16 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
 
-            
-async def aggiorna_log_giornaliero():
-    
-    await invia_contenuto_file()
-    await crea_nuovo_log()
-
-""" async def aggiorna_log_giornaliero():
-    # Aggiorna il log giornaliero a mezzanotte.
-    ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
-        #await invia_messaggio("Inviando log giornaliero e inizializzando un nuovo log...", config.chat_id)
-        # scrivi_log("Fine giornata")  # Scrive "Fine giornata" sull'ultimo log
-        await invia_contenuto_file()  # Invia il log giornaliero
-        #await invia_messaggio("Log giornaliero inviato e nuovo log inizializzato.", config.chat_id)
-        await crea_nuovo_log()  # Crea un nuovo log e scrive "Inizio giornata" """
-
 async def invia_file_testuale():
-    # Invia il contenuto del file testuale del giorno precedente a mezzanotte.
+    #Invia il contenuto del file testuale del giorno precedente a mezzanotte.
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-
-    if ora_corrente.hour == 0 and ora_corrente.minute in [0, 1]:  # Controlla se è mezzanotte o l'ora è vicina a mezzanotte
-        ora_corrente_str = ora_corrente.strftime('%H:%M:%S')
-        anno_corrente = ora_corrente.strftime('%Y')
-        mese_corrente = ora_corrente.strftime('%m')
-        cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-        data_corrente = ora_corrente.strftime('%Y-%m-%d')
-
-        # Crea la cartella se non esiste
-        os.makedirs(cartella_log, exist_ok=True)
-
-        nome_file = f"{cartella_log}/{data_corrente}.txt"
-        evento = f"{ora_corrente_str} - Fine giornata"
-
-        with open(nome_file, 'a') as file:
-            file.write(evento + '\n')
-
-        print("Invio del contenuto del file testuale del giorno precedente.")
-        await aggiorna_log_giornaliero()  # Aggiorna il log giornaliero
-
-
-def create_log_file(file_path, event):
-    with open(file_path, 'a') as file:
-        file.write(event + '\n')
-    print(f"File {file_path} creato con l'evento: {event}")
-
-async def crea_nuovo_log():
-    # Funzione per creare un nuovo log con la prima riga "<Orario> - Inizio Giornata".
-    ora_corrente = datetime.now().strftime('%H:%M:%S')
-    data_corrente = datetime.now().strftime('%Y-%m-%d')
-
-    # Suddivisione in cartelle per anno e mese
-    anno_corrente = datetime.now().strftime('%Y')
-    mese_corrente = datetime.now().strftime('%m')
-
-    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-
-    if not os.path.exists(cartella_log):
-        os.makedirs(cartella_log)
-
-    nome_file = f"{cartella_log}/{data_corrente}.txt"
-    evento = f"{ora_corrente} - Inizio giornata"
-
-    # Tempo limite per i controlli: 00:05 del giorno successivo
-    end_time = datetime.combine(datetime.today() + timedelta(days=1), datetime.min.time()) + timedelta(minutes=5)
-
-    while datetime.now() < end_time:
-        if os.path.exists(nome_file):
-            print(f"Il file {nome_file} esiste già.")
-            return
-        else:
-            print(f"Il file {nome_file} non esiste, controllo di nuovo tra 30 secondi...")
-            await asyncio.sleep(30)
     
-    # Se il file non è stato trovato entro le 00:05, crearlo
-    if not os.path.exists(nome_file):
-        create_log_file(nome_file, evento)
-
-async def controllo_log():
-    while True:
-        now = datetime.now()
-        # Calcola il tempo fino a un minuto dopo la mezzanotte
-        if now.hour == 0 and now.minute == 1:
-            await crea_nuovo_log()
-        
-        # Attendi un minuto prima di rieseguire il controllo
-        await asyncio.sleep(60)
-
+    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+        print("Invio del contenuto del file testuale del giorno precedente.")
+        await invia_contenuto_file()
 
 async def invia_contenuto_file():
-    # Invia il contenuto del file testuale del giorno precedente.
+    #Invia il contenuto del file testuale del giorno precedente.
     print("Invio del contenuto del file testuale del giorno precedente.")
     
     data_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -196,15 +115,14 @@ async def invia_contenuto_file():
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
 
-        # Inseriamo "Fine giornata" come ultima riga del file precedente
-        contenuto_file.append(f"{datetime.now().strftime('%H:%M:%S')} - Fine giornata\n")
+        # Escludo le stringhe di inizio e fine giornata se presenti
+        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
 
-        # Invia il contenuto del file precedente
-        if len(contenuto_file) == 1 and "Avvio dello script" in contenuto_file[0]:
+        if len(contenuto_da_inviare) == 1 and "Avvio dello script" in contenuto_da_inviare[0]:
             print("Nessun evento da segnalare.")
             await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
-        elif contenuto_file:
-            contenuto_da_inviare = '\n'.join(contenuto_file)
+        elif contenuto_da_inviare:
+            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
             print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
             await invia_messaggi_divisi(contenuto_da_inviare, config.chat_id)
         else:
@@ -359,6 +277,23 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
+def crea_file_log():
+    # Suddivisione in cartelle per anno e mese
+    anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
+    mese_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%m')
+    data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
+    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
+    
+    if not os.path.exists(cartella_log):
+        os.makedirs(cartella_log)
+    
+    nome_file = f"{cartella_log}/{data_corrente}.txt"
+    
+    # Crea il file se non esiste
+    if not os.path.exists(nome_file):
+        with open(nome_file, 'w') as file:
+            file.write(f"Inizio giornata {data_corrente}\n")
+
 def main():
     #Funzione principale per avviare il bot.
     application = ApplicationBuilder().token(config.bot_token).build()
@@ -369,70 +304,67 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero)$"), button_handler))
 
     async def monitoraggio():
+        #La funzione principale di monitoraggio
+        scrivi_log("Avvio dello script")
+        crea_file_log()  # Crea il file di log all'avvio
+        
+        stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
+        global allarme_attivo
+
         while True:
-            #La funzione principale di monitoraggio
-            scrivi_log("Avvio dello script")
-            
-            stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
-            global allarme_attivo
+            if not modalita_manutenzione:
+                tutti_offline = True
 
-            while True:
-                if not modalita_manutenzione:
-                    tutti_offline = True
+                for dispositivo in config.indirizzi_ping:
+                    nome_dispositivo = dispositivo['nome']
+                    indirizzo_ip = dispositivo['indirizzo']
+                    tentativi = 0
 
-                    for dispositivo in config.indirizzi_ping:
-                        nome_dispositivo = dispositivo['nome']
-                        indirizzo_ip = dispositivo['indirizzo']
-                        tentativi = 0
-
-                        while tentativi < 2:
-                            connessione_attuale = controlla_connessione(indirizzo_ip)
-                            
-                            if connessione_attuale:
-                                if not stato_connessioni[indirizzo_ip]:
-                                    await invia_messaggio(
-                                        f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
-                                        config.chat_id)
-                                    scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
-                                    stato_connessioni[indirizzo_ip] = True
-                                break
-                            else:
-                                tentativi += 1
-                                await asyncio.sleep(30)
-
-                        if not connessione_attuale and stato_connessioni[indirizzo_ip]:
-                            await invia_messaggio(
-                                f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
-                                config.chat_id)
-                            scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                            stato_connessioni[indirizzo_ip] = False
-
-                        # Se almeno un dispositivo è online, non attiviamo l'allarme.
+                    while tentativi < 2:
+                        connessione_attuale = controlla_connessione(indirizzo_ip)
+                        
                         if connessione_attuale:
-                            tutti_offline = False
+                            if not stato_connessioni[indirizzo_ip]:
+                                await invia_messaggio(
+                                    f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
+                                    config.chat_id)
+                                scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
+                                stato_connessioni[indirizzo_ip] = True
+                            break
+                        else:
+                            tentativi += 1
+                            await asyncio.sleep(30)
 
-                    # Se tutti i dispositivi sono offline e l'allarme non è già attivo.
-                    if tutti_offline and not allarme_attivo:
-                        allarme_attivo = True
-
-                    # Se almeno un dispositivo è online e l'allarme è attivo.
-                    elif not tutti_offline and allarme_attivo:
-                        allarme_attivo = False
-
-                    # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
-                    if allarme_attivo:
+                    if not connessione_attuale and stato_connessioni[indirizzo_ip]:
                         await invia_messaggio(
-                            "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
+                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
                             config.chat_id)
+                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                        stato_connessioni[indirizzo_ip] = False
 
-                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
-                await invia_file_testuale()
+                    # Se almeno un dispositivo è online, non attiviamo l'allarme.
+                    if connessione_attuale:
+                        tutti_offline = False
+
+                # Se tutti i dispositivi sono offline e l'allarme non è già attivo.
+                if tutti_offline and not allarme_attivo:
+                    allarme_attivo = True
+
+                # Se almeno un dispositivo è online e l'allarme è attivo.
+                elif not tutti_offline and allarme_attivo:
+                    allarme_attivo = False
+
+                # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
+                if allarme_attivo:
+                    await invia_messaggio(
+                        "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
+                        config.chat_id)
+
+            await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
+            await invia_file_testuale()
 
     async def avvio_monitoraggio():
-        await asyncio.gather(
-        monitoraggio(),
-        controllo_log()
-    )
+        await monitoraggio()
 
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())
