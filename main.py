@@ -292,7 +292,8 @@ def crea_file_log():
     # Crea il file se non esiste
     if not os.path.exists(nome_file):
         with open(nome_file, 'w') as file:
-            file.write(f"Inizio giornata {data_corrente}\n")
+            ora_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%H:%M:%S')
+            file.write(f"{ora_corrente} - Inizio Giornata {data_corrente}\n")
 
 def main():
     #Funzione principale per avviare il bot.
