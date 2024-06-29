@@ -7,6 +7,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import pytz
 import config
 
+async def daily_task():
+    while True:
+        now = datetime.now(pytz.timezone('Europe/Rome'))
+        if now.hour == 0 and now.minute == 0:
+            chiudi_giornata()
+            crea_file_log()
+        await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
+
 # Variabile globale per la modalità manutenzione
 modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
@@ -293,7 +301,30 @@ def crea_file_log():
     if not os.path.exists(nome_file):
         with open(nome_file, 'w') as file:
             ora_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%H:%M:%S')
-            file.write(f"{ora_corrente} - Inizio Giornata {data_corrente}\n")
+            file.write(f"{ora_corrente} - Inizio Giornata\n")
+
+def chiudi_giornata():
+    # Chiude la giornata corrente e ne inizia una nuova
+    data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
+    anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
+    mese_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%m')
+
+    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
+    nome_file_corrente = f"{cartella_log}/{data_corrente}.txt"
+
+    if os.path.exists(nome_file_corrente):
+        with open(nome_file_corrente, 'a') as file:
+            ora_fine_giornata = datetime.now(pytz.timezone('Europe/Rome')).strftime('%H:%M:%S')
+            file.write(f"{ora_fine_giornata} - Fine giornata\n")
+
+        # Crea il file per la giornata successiva
+        data_successiva = (datetime.now(pytz.timezone('Europe/Rome')) + timedelta(days=1)).strftime('%Y-%m-%d')
+        nome_file_successivo = f"{cartella_log}/{data_successiva}.txt"
+        open(nome_file_successivo, 'a').close()
+
+# Chiamare la funzione chiudi_giornata() a mezzanotte
+if datetime.now(pytz.timezone('Europe/Rome')).hour == 0 and datetime.now(pytz.timezone('Europe/Rome')).minute == 0:
+    chiudi_giornata()
 
 def main():
     #Funzione principale per avviare il bot.
@@ -369,6 +400,7 @@ def main():
 
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())
+    loop.create_task(daily_task())  # Aggiungi questa riga per eseguire la funzione daily_task()
 
     application.run_polling()
 
