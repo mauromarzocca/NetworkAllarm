@@ -365,7 +365,7 @@ def main():
                             break
                         else:
                             tentativi += 1
-                            await asyncio.sleep(30)
+                            await asyncio.sleep(40)
 
                     if not connessione_attuale and stato_connessioni[indirizzo_ip]:
                         await invia_messaggio(
@@ -399,8 +399,8 @@ def main():
         await monitoraggio()
 
     loop = asyncio.get_event_loop()
-    loop.create_task(avvio_monitoraggio())
     loop.create_task(daily_task())  # Aggiungi questa riga per eseguire la funzione daily_task()
+    loop.create_task(avvio_monitoraggio())
 
     application.run_polling()
 
