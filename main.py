@@ -7,14 +7,15 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import pytz
 import config
 
-async def daily_task():
+""" async def daily_task():
     while True:
         now = datetime.now(pytz.timezone('Europe/Rome'))
         if now.hour == 0 and now.minute == 0:
             chiudi_giornata()
-            crea_file_log()
+            #crea_file_log()
         await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
-
+    #chiudi_giornata()  # Aggiungi questa riga per chiudere la giornata corrente alla fine della funzione.
+ """
 # Variabile globale per la modalità manutenzione
 modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
@@ -96,6 +97,8 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
 
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
+
+
 
 async def invia_file_testuale():
     #Invia il contenuto del file testuale del giorno precedente a mezzanotte.
@@ -322,6 +325,10 @@ def chiudi_giornata():
         nome_file_successivo = f"{cartella_log}/{data_successiva}.txt"
         open(nome_file_successivo, 'a').close()
 
+async def daily_task():
+    if datetime.now(pytz.timezone('Europe/Rome')).hour == 0 and datetime.now(pytz.timezone('Europe/Rome')).minute == 0:
+        await chiudi_giornata()
+    await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
 # Chiamare la funzione chiudi_giornata() a mezzanotte
 if datetime.now(pytz.timezone('Europe/Rome')).hour == 0 and datetime.now(pytz.timezone('Europe/Rome')).minute == 0:
     chiudi_giornata()
@@ -352,7 +359,7 @@ def main():
                     indirizzo_ip = dispositivo['indirizzo']
                     tentativi = 0
 
-                    while tentativi < 2:
+                    while tentativi < 4:
                         connessione_attuale = controlla_connessione(indirizzo_ip)
                         
                         if connessione_attuale:
