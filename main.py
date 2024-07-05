@@ -6,16 +6,15 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
+import schedule
+import time
 
-""" async def daily_task():
+async def daily_task():
+    schedule.every().day.at("00:00").do(chiudi_giornata)  # Pianifica l'esecuzione di chiudi_giornata ogni giorno alle 00:00
     while True:
-        now = datetime.now(pytz.timezone('Europe/Rome'))
-        if now.hour == 0 and now.minute == 0:
-            chiudi_giornata()
-            #crea_file_log()
+        schedule.run_pending()
         await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
-    #chiudi_giornata()  # Aggiungi questa riga per chiudere la giornata corrente alla fine della funzione.
- """
+        
 # Variabile globale per la modalità manutenzione
 modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
@@ -350,7 +349,12 @@ def main():
         stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
         global allarme_attivo
 
+        schedule.every().day.at("00:00").do(chiudi_giornata)  # Pianifica l'esecuzione di chiudi_giornata ogni giorno alle 00:00
+
         while True:
+            schedule.run_pending()
+            time.sleep(1)
+
             if not modalita_manutenzione:
                 tutti_offline = True
 
