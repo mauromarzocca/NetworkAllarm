@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-- Versione : 6.9.1
+- Versione : 6.9.2
 
  ---
 
