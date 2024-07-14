@@ -6,15 +6,7 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
-import schedule
-import time
 
-async def daily_task():
-    schedule.every().day.at("00:00").do(chiudi_giornata)  # Pianifica l'esecuzione di chiudi_giornata ogni giorno alle 00:00
-    while True:
-        schedule.run_pending()
-        await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
-        
 # Variabile globale per la modalità manutenzione
 modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
@@ -96,8 +88,6 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
 
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
-
-
 
 async def invia_file_testuale():
     #Invia il contenuto del file testuale del giorno precedente a mezzanotte.
@@ -287,51 +277,6 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
-def crea_file_log():
-    # Suddivisione in cartelle per anno e mese
-    anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
-    mese_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%m')
-    data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
-    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-    
-    if not os.path.exists(cartella_log):
-        os.makedirs(cartella_log)
-    
-    nome_file = f"{cartella_log}/{data_corrente}.txt"
-    
-    # Crea il file se non esiste
-    if not os.path.exists(nome_file):
-        with open(nome_file, 'w') as file:
-            ora_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%H:%M:%S')
-            file.write(f"{ora_corrente} - Inizio Giornata\n")
-
-def chiudi_giornata():
-    # Chiude la giornata corrente e ne inizia una nuova
-    data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
-    anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
-    mese_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%m')
-
-    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-    nome_file_corrente = f"{cartella_log}/{data_corrente}.txt"
-
-    if os.path.exists(nome_file_corrente):
-        with open(nome_file_corrente, 'a') as file:
-            ora_fine_giornata = datetime.now(pytz.timezone('Europe/Rome')).strftime('%H:%M:%S')
-            file.write(f"{ora_fine_giornata} - Fine giornata\n")
-
-        # Crea il file per la giornata successiva
-        data_successiva = (datetime.now(pytz.timezone('Europe/Rome')) + timedelta(days=1)).strftime('%Y-%m-%d')
-        nome_file_successivo = f"{cartella_log}/{data_successiva}.txt"
-        open(nome_file_successivo, 'a').close()
-
-async def daily_task():
-    if datetime.now(pytz.timezone('Europe/Rome')).hour == 0 and datetime.now(pytz.timezone('Europe/Rome')).minute == 0:
-        await chiudi_giornata()
-    await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
-# Chiamare la funzione chiudi_giornata() a mezzanotte
-if datetime.now(pytz.timezone('Europe/Rome')).hour == 0 and datetime.now(pytz.timezone('Europe/Rome')).minute == 0:
-    chiudi_giornata()
-
 def main():
     #Funzione principale per avviare il bot.
     application = ApplicationBuilder().token(config.bot_token).build()
@@ -344,17 +289,11 @@ def main():
     async def monitoraggio():
         #La funzione principale di monitoraggio
         scrivi_log("Avvio dello script")
-        crea_file_log()  # Crea il file di log all'avvio
         
         stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
         global allarme_attivo
 
-        schedule.every().day.at("00:00").do(chiudi_giornata)  # Pianifica l'esecuzione di chiudi_giornata ogni giorno alle 00:00
-
         while True:
-            schedule.run_pending()
-            time.sleep(1)
-
             if not modalita_manutenzione:
                 tutti_offline = True
 
@@ -363,7 +302,7 @@ def main():
                     indirizzo_ip = dispositivo['indirizzo']
                     tentativi = 0
 
-                    while tentativi < 4:
+                    while tentativi < 2:
                         connessione_attuale = controlla_connessione(indirizzo_ip)
                         
                         if connessione_attuale:
@@ -376,7 +315,7 @@ def main():
                             break
                         else:
                             tentativi += 1
-                            await asyncio.sleep(40)
+                            await asyncio.sleep(30)
 
                     if not connessione_attuale and stato_connessioni[indirizzo_ip]:
                         await invia_messaggio(
@@ -410,7 +349,6 @@ def main():
         await monitoraggio()
 
     loop = asyncio.get_event_loop()
-    loop.create_task(daily_task())  # Aggiungi questa riga per eseguire la funzione daily_task()
     loop.create_task(avvio_monitoraggio())
 
     application.run_polling()
