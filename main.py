@@ -93,7 +93,8 @@ async def invia_file_testuale():
     #Invia il contenuto del file testuale del giorno precedente a mezzanotte.
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
     
-    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+    #    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+    if ora_corrente.hour == 0 and ora_corrente.minute == 0 and ora_corrente.second == 50:
         scrivi_log("Inizio Giornata")
         print("Invio del contenuto del file testuale del giorno precedente.")
         await invia_contenuto_file()
@@ -112,6 +113,15 @@ async def invia_contenuto_file():
     
     nome_file = f"{cartella_log}/{data_precedente}.txt"
     
+
+    # INIZIO TEST FINE GIORNATA
+    ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
+    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+        scrivi_log("Fine Giornata")
+       
+        # FINE TEST FINE GIORNATA
+
+
     try:
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
