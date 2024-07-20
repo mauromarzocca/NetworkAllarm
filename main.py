@@ -94,6 +94,7 @@ async def invia_file_testuale():
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
     
     if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+        scrivi_log("Inizio Giornata")
         print("Invio del contenuto del file testuale del giorno precedente.")
         await invia_contenuto_file()
 
@@ -302,7 +303,7 @@ def main():
                     indirizzo_ip = dispositivo['indirizzo']
                     tentativi = 0
 
-                    while tentativi < 2:
+                    while tentativi < 3:
                         connessione_attuale = controlla_connessione(indirizzo_ip)
                         
                         if connessione_attuale:
