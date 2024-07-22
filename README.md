@@ -1,8 +1,8 @@
 # NetworkAllarm
 
-- Versione : 6.10
+Versione : 6.10
 
- ---
+![logo](/img/logo.png)
 
 ## Indice
 
