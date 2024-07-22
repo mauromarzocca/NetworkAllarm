@@ -118,7 +118,9 @@ async def invia_contenuto_file():
             contenuto_file = file.readlines()
 
         # Escludo le stringhe di inizio e fine giornata se presenti
-        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
+        # contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
+
+        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
 
         if len(contenuto_da_inviare) == 1 and "Avvio dello script" in contenuto_da_inviare[0]:
             print("Nessun evento da segnalare.")
@@ -149,7 +151,8 @@ async def invia_log_corrente(chat_id):
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
         
-        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
+        # contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
+        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
         
         if contenuto_da_inviare:
             contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
