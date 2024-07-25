@@ -14,28 +14,6 @@ messaggio_stato_id = None
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
-#  TEST FINE GIORNATA
-
-async def scrivi_fine_giornata():
-    ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    if ora_corrente.hour == 23 and ora_corrente.minute == 59 and ora_corrente.second == 59:
-        data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
-        anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
-        mese_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%m')
-        cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-        nome_file = f"{cartella_log}/{data_corrente}.txt"
-        with open(nome_file, 'a') as file:
-            file.write(f"{ora_corrente.strftime('%H:%M:%S')} - Fine Giornata\n")
-
-async def avvio_scrivi_fine_giornata():
-    while True:
-        await scrivi_fine_giornata()
-        await asyncio.sleep(60)  # Attendi 1 minuto prima di rieseguire il controllo.
-
-
-#   FINE TEST
-
-
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
     #Invia un messaggio tramite il bot Telegram e ne programma la cancellazione dopo 7 giorni.
     bot = Bot(token=config.bot_token)
@@ -378,13 +356,6 @@ def main():
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())
     
-    # TEST
-    
-    loop.create_task(avvio_scrivi_fine_giornata())
-
-
-    # FINE TEST
-
 
     application.run_polling()
 
