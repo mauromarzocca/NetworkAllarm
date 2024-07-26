@@ -122,7 +122,7 @@ async def invia_contenuto_file():
 
         contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
 
-        if len(contenuto_da_inviare) == 1 and "Avvio dello script" in contenuto_da_inviare[0]:
+        if len(contenuto_da_inviare) == 1 and "Avvio dello script" and "Inizio Giornata" in contenuto_da_inviare[0]:
             print("Nessun evento da segnalare.")
             await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
         elif contenuto_da_inviare:
