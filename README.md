@@ -9,6 +9,7 @@ Versione : 6.11
 - [NetworkAllarm](#networkallarm)
   - [Indice](#indice)
   - [Introduzione](#introduzione)
+  - [Anteprima](#anteprima)
   - [Installazione](#installazione)
   - [Configurazione](#configurazione)
   - [Utilizzo](#utilizzo)
@@ -30,6 +31,12 @@ La modalità manutenzione permette il blocco dell'invio delle notifiche in casi 
 Attualmente viene utilizzato per sopperire a delle problematiche legate ad un allarme domestico.
 Infatti il Server è collegato, insieme al Router, ad un UPS.
 Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per un disservizio su un singolo dispositivo.
+
+---
+
+## Anteprima
+
+![preview](/img/screenshot.jpeg)
 
 ---
 
