@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 6.10
+Versione : 6.11
 
 ![logo](/img/logo.png)
 
@@ -171,6 +171,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 6.9.1 : Bug Fix.
 - Versione 6.9.2 : Ottimizzazione del codice.
 - Versione 6.10 : Implementazione dell'evento "Inizio Giornata"
+- Versione 6.11 : Eliminazione di codice ridondante.
 
 ---
 

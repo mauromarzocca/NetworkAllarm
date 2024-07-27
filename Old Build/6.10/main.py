@@ -14,31 +14,33 @@ messaggio_stato_id = None
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
-# Funzione per inviare un messaggio
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
+    #Invia un messaggio tramite il bot Telegram e ne programma la cancellazione dopo 7 giorni.
     bot = Bot(token=config.bot_token)
     try:
         messaggio_inviato = await bot.send_message(chat_id=chat_id, text=messaggio, reply_markup=reply_markup)
         message_id = messaggio_inviato.message_id
+        # Programma la cancellazione del messaggio dopo 7 giorni
         asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, message_id, 7 * 24 * 60 * 60))
         return message_id
     except Exception as e:
         print(f"Errore durante l'invio del messaggio: {e}")
 
-# Funzione per inviare un messaggio suddividendolo in parti più piccole se necessario
 async def invia_messaggi_divisi(messaggio, chat_id):
+    #Invia un messaggio suddividendolo in parti più piccole se necessario e ne programma la cancellazione dopo 7 giorni.
     bot = Bot(token=config.bot_token)
     try:
         righe = messaggio.split('\n')
         for i in range(0, len(righe), 10):
             parte = '\n'.join(righe[i:i+10])
             messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte)
+            # Programma la cancellazione del messaggio dopo 7 giorni
             asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, 7 * 24 * 60 * 60))
     except Exception as e:
         print(f"Errore durante l'invio del messaggio: {e}")
 
-# Funzione per cancellare un messaggio dopo un certo delay
 async def cancella_messaggio_dopo_delay(chat_id, message_id, delay):
+    #Cancella un messaggio dopo un certo delay.
     await asyncio.sleep(delay)
     bot = Bot(token=config.bot_token)
     try:
@@ -46,16 +48,16 @@ async def cancella_messaggio_dopo_delay(chat_id, message_id, delay):
     except Exception as e:
         print(f"Errore durante la cancellazione del messaggio: {e}")
 
-# Funzione per modificare un messaggio esistente
 async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
+    #Modifica un messaggio esistente.
     bot = Bot(token=config.bot_token)
     try:
         await bot.edit_message_text(chat_id=chat_id, message_id=messaggio_id, text=nuovo_testo)
     except Exception as e:
         print(f"Errore durante la modifica del messaggio: {e}")
 
-# Funzione per controllare lo stato della connessione
 def controlla_connessione(indirizzo):
+    #Effettua un ping per controllare lo stato della connessione.
     comando_ping = ['ping', '-c', '1', indirizzo]
     try:
         subprocess.check_output(comando_ping)
@@ -63,8 +65,8 @@ def controlla_connessione(indirizzo):
     except subprocess.CalledProcessError:
         return False
 
-# Funzione per scrivere l'orario e il tipo di evento in un file di log
 def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
+    #Scrive l'orario e il tipo di evento in un file di log.
     ora_evento = datetime.now().strftime('%H:%M:%S')
     data_corrente = datetime.now().strftime('%Y-%m-%d')
     
@@ -87,15 +89,17 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
 
-# Funzione per inviare il contenuto del file testuale del giorno precedente a mezzanotte
 async def invia_file_testuale():
+    #Invia il contenuto del file testuale del giorno precedente a mezzanotte.
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
+    
     if ora_corrente.hour == 0 and ora_corrente.minute == 0:
         scrivi_log("Inizio Giornata")
         print("Invio del contenuto del file testuale del giorno precedente.")
         await invia_contenuto_file()
 
 async def invia_contenuto_file():
+    #Invia il contenuto del file testuale del giorno precedente.
     print("Invio del contenuto del file testuale del giorno precedente.")
     
     data_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -108,14 +112,17 @@ async def invia_contenuto_file():
     
     nome_file = f"{cartella_log}/{data_precedente}.txt"
 
+
     try:
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
 
         # Escludo le stringhe di inizio e fine giornata se presenti
+        # contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
+
         contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
 
-        if len(contenuto_da_inviare) == 1 and "Avvio dello script" in contenuto_da_inviare[0]:
+        if len(contenuto_da_inviare) == 1 and "Avvio dello script" and "Inizio Giornata" in contenuto_da_inviare[0]:
             print("Nessun evento da segnalare.")
             await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
         elif contenuto_da_inviare:
@@ -131,6 +138,7 @@ async def invia_contenuto_file():
         await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_precedente}: {str(e)}", config.chat_id)
 
 async def invia_log_corrente(chat_id):
+    #Invia il log della giornata corrente fino a quel momento.
     data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
     
     anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
@@ -143,6 +151,7 @@ async def invia_log_corrente(chat_id):
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
         
+        # contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line and "Fine giornata" not in line]
         contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
         
         if contenuto_da_inviare:
@@ -156,6 +165,7 @@ async def invia_log_corrente(chat_id):
         await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_corrente}: {str(e)}", chat_id)
 
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Avvia la modalità manutenzione.
     global modalita_manutenzione
     
     if not modalita_manutenzione:
@@ -165,6 +175,7 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await aggiorna_messaggio_stato(update.effective_chat.id)
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Termina la modalità manutenzione.
     global modalita_manutenzione
     
     if modalita_manutenzione:
@@ -174,6 +185,7 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
         await aggiorna_messaggio_stato(update.effective_chat.id)
 
 async def aggiorna_messaggio_stato(chat_id):
+    #Aggiorna il messaggio di stato.
     global messaggio_stato_id
     
     stato = "Modalità Manutenzione: Attiva" if modalita_manutenzione else "Modalità Manutenzione: Non Attiva"
@@ -184,9 +196,11 @@ async def aggiorna_messaggio_stato(chat_id):
         messaggio_stato_id = await invia_messaggio(stato, chat_id)
 
 def utente_autorizzato(user_id):
+    #Controlla se l'utente è autorizzato.
     return user_id in config.autorizzati
 
 def get_keyboard():
+    #Restituisce la tastiera inline con i pulsanti di comando.
     button_list = [
         InlineKeyboardButton("🔧 Inizio Manutenzione", callback_data='inizio_manutenzione'),
         InlineKeyboardButton("✅ Fine Manutenzione", callback_data='fine_manutenzione'),
@@ -197,6 +211,7 @@ def get_keyboard():
     return InlineKeyboardMarkup([button_list[:2], button_list[2:]])
 
 def get_custom_keyboard():
+    #Restituisce la tastiera personalizzata con i pulsanti del menu.
     button_list = [
         KeyboardButton("🔧 Inizio Manutenzione"),
         KeyboardButton("✅ Fine Manutenzione"),
@@ -207,6 +222,7 @@ def get_custom_keyboard():
     return ReplyKeyboardMarkup([button_list[:2], button_list[2:]], resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Gestisce il comando /start.
     user = update.message.from_user
     if utente_autorizzato(user.id):
         await update.message.reply_text(
@@ -218,10 +234,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
 
 async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Mostra il menu dei comandi.
     chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Gestisce i pulsanti inline.
     query = update.callback_query
     await query.answer()
     
@@ -235,6 +253,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_log_giornaliero(update, context)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Gestisce i pulsanti della tastiera personalizzata.
     text = update.message.text
     
     if text == "🔧 Inizio Manutenzione":
@@ -247,6 +266,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_log_giornaliero(update, context)
 
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Verifica lo stato delle connessioni e invia un messaggio con i risultati all'utente.
     stati_connessioni = []
     for dispositivo in config.indirizzi_ping:
         nome_dispositivo = dispositivo['nome']
@@ -258,10 +278,12 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     await invia_messaggio(messaggio, update.message.chat_id)
 
 async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #Invia il log della giornata corrente fino a quel momento all'utente.
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
 def main():
+    #Funzione principale per avviare il bot.
     application = ApplicationBuilder().token(config.bot_token).build()
     
     application.add_handler(CommandHandler("start", start))
@@ -334,6 +356,7 @@ def main():
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())
     
+
     application.run_polling()
 
 if __name__ == '__main__':
