@@ -13,8 +13,8 @@ import os
 from datetime import datetime
 
 # Configurazione del logging
-anno_corrente = str(datetime.now().year)
-mese_corrente = str(datetime.now().month)
+anno_corrente = datetime.now().strftime('%Y')
+mese_corrente = datetime.now().strftime('%m')
 data_corrente = datetime.now().strftime("%Y-%m-%d")
 
 cartella_log = os.path.join('log', anno_corrente, mese_corrente)
