@@ -66,10 +66,12 @@ def controlla_connessione(indirizzo):
 # Funzione per scrivere l'orario e il tipo di evento in un file di log
 def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     ora_evento = datetime.now().strftime('%H:%M:%S')
-    data_corrente = datetime.now().strftime('%Y-%m-%d')
+    anno_corrente = datetime.now().strftime('%Y')
+    mese_corrente = datetime.now().strftime('%m')
+    data_corrente = datetime.now().strftime("%Y-%m-%d")
     
-    cartella_log = os.path.join(config.log_folder, str(datetime.now().year), str(datetime.now().month))
-    
+    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
+
     if not os.path.exists(cartella_log):
         os.makedirs(cartella_log)
     
@@ -111,7 +113,7 @@ async def invia_contenuto_file():
         # Escludo le stringhe di inizio e fine giornata se presenti
         contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
 
-        if len(contenuto_da_inviare) == 1 and "Avvio dello script" in contenuto_da_inviare[0]:
+        if len(contenuto_da_inviare) == 1 and "Avvio dello script" and "Inizio giornata" in contenuto_da_inviare[0]:
             print("Nessun evento da segnalare.")
             await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
         elif contenuto_da_inviare:
