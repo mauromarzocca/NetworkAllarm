@@ -6,6 +6,7 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
+from config import cartella_log, nome_file
 
 # Variabile globale per la modalità manutenzione
 modalita_manutenzione = False
@@ -13,6 +14,9 @@ modalita_manutenzione = False
 messaggio_stato_id = None
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
+
+# Utilizza la cartella dei log definita in config.py
+log_file = os.path.join(cartella_log, nome_file)
 
 # Funzione per inviare un messaggio
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
