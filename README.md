@@ -187,7 +187,6 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 
 Questo progetto è rilasciato sotto la [MIT License](./LICENSE).
 
-
 ---
 
 ## Autori
