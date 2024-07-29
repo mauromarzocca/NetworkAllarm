@@ -68,7 +68,11 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     ora_evento = datetime.now().strftime('%H:%M:%S')
     data_corrente = datetime.now().strftime('%Y-%m-%d')
     
-    cartella_log = os.path.join(config.log_folder, str(datetime.now().year), str(datetime.now().month))
+    # Suddivisione in cartelle per anno e mese
+    anno_corrente = datetime.now().strftime('%Y')
+    mese_corrente = datetime.now().strftime('%m')
+    
+    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
     
     if not os.path.exists(cartella_log):
         os.makedirs(cartella_log)
@@ -82,7 +86,7 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
 
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
-        
+
 # Funzione per inviare il contenuto del file testuale del giorno precedente a mezzanotte
 async def invia_file_testuale():
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
