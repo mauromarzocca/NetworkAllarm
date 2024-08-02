@@ -88,7 +88,7 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
 
     with open(nome_file, 'a') as file:
         file.write(evento + '\n')
-        
+
 # Funzione per inviare il contenuto del file testuale del giorno precedente a mezzanotte
 async def invia_file_testuale():
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
@@ -114,19 +114,17 @@ async def invia_contenuto_file():
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
 
-        # Escludo le stringhe di inizio e fine giornata se presenti
-        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
+        # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
+        contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
+            excl in line.lower() for excl in ["inizio giornata", "avvio dello script"])]
 
-        if len(contenuto_da_inviare) == 1 and "Avvio dello script" and "Inizio giornata" in contenuto_da_inviare[0]:
+        if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
-            await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
-        elif contenuto_da_inviare:
+            await invia_messaggio("✅ Nessun evento da segnalare.", config.chat_id)
+        else:
             contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
             print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
             await invia_messaggi_divisi(contenuto_da_inviare, config.chat_id)
-        else:
-            print("Nessun evento da segnalare.")
-            await invia_messaggio("Nessun evento da segnalare.", config.chat_id)
     
     except Exception as e:
         print("Errore durante la lettura del file di log:", str(e))
