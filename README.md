@@ -162,12 +162,14 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 5.10 - 6.13
 
     Novità: Suddivisione del programma in più file per migliorare la leggibilità e la manutenzione del codice.
+
     Modifiche:
   - [main.py](./main.py): Script principale per l'avvio del bot e del monitoraggio.
   - [bot.py](bot.py): Contiene le funzioni per la gestione del bot Telegram.
   - [monitor.py](./monitor.py): Contiene le funzioni per il monitoraggio della connessione Ethernet.
   - [utils.py](./utils.py): Contiene funzioni di utilità generiche (invio messaggi, logging, ecc.).
   - [status.py](./status.py): Contiene lo stato della modalità di manutenzione.
+
 - Versione 6.0.1 : Bug Fix.
 - Versione 6.1 : Vengono mantenuti solo i file main e config per alcune problematiche. Inoltre, è stato aggiunto un allarme più invasivo nel caso in cui tutti i dispositivi siano disconnessi.
 - Versione 6.3 : Migliorata la gestione dei log e ottimizzazioni varie.
