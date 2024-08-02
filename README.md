@@ -149,6 +149,10 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - ~~Ping dal Bot~~ (Introdotto nella Build 6.5 con lo Stato Connessione)
 - ~~Miglioramento delle notifiche nel caso in cui tutti i dispositivi non rispondono.~~ (Risolto nella Build 6.0.1)
 - Bug Fix continuo.
+- Versione Inglese.
+- Inserimento dei dispositivi da monitorare tramite bot.
+- Maintenence Mode anche per dispositivi singoli.
+- Utilizzo di un database invece che file testuali.
 
 ---
 
