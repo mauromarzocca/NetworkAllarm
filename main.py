@@ -235,6 +235,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif query.data == 'log_giornaliero':
         await invia_log_giornaliero(update, context)
+    elif query.data.startswith("manutenzione_"):
+        nome_dispositivo = query.data.split("_")[1]
+        # Qui puoi aggiungere la logica per gestire la manutenzione del dispositivo selezionato
+        await invia_messaggio(f"Hai selezionato il dispositivo {nome_dispositivo}", update.message.chat_id)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -247,6 +251,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif text == "📝 Log Giornaliero":
         await invia_log_giornaliero(update, context)
+    elif text == "🔧 Manutenzione":
+        await gestisci_manutenzione(update, context)
+
+async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dispositivi = config.indirizzi_ping
+    pulsanti = []
+    for dispositivo in dispositivi:
+        pulsanti.append(InlineKeyboardButton(dispositivo['nome'], callback_data=f"manutenzione_{dispositivo['nome']}"))
+    
+    keyboard = InlineKeyboardMarkup([pulsanti])
+    await invia_messaggio("Dove vuoi gestire la manutenzione?", update.message.chat_id, reply_markup=keyboard)
 
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stati_connessioni = []
@@ -269,7 +284,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero)$"), button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione)$"), button_handler))
 
     async def monitoraggio():
         #La funzione principale di monitoraggio
