@@ -191,7 +191,7 @@ def get_keyboard():
         InlineKeyboardButton("🔧 Inizio Manutenzione", callback_data='inizio_manutenzione'),
         InlineKeyboardButton("✅ Fine Manutenzione", callback_data='fine_manutenzione'),
         InlineKeyboardButton("📈 Stato Connessioni", callback_data='stato_connessioni'),
-        InlineKeyboardButton("📝 Log Giornaliero", callback_data='log_giornaliero')
+        InlineKeyboardButton("📝 Log Giornaliero", callback_data='log_giornaliero'),
         InlineKeyboardButton("🔧 Manutenzione", callback_data='manutenzione')
     ]
     
@@ -202,7 +202,7 @@ def get_custom_keyboard():
         KeyboardButton("🔧 Inizio Manutenzione"),
         KeyboardButton("✅ Fine Manutenzione"),
         KeyboardButton("📈 Stato Connessioni"),
-        KeyboardButton("📝 Log Giornaliero")
+        KeyboardButton("📝 Log Giornaliero"),
         KeyboardButton("🔧 Manutenzione")
     ]
     
