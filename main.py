@@ -237,9 +237,35 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_log_giornaliero(update, context)
     elif query.data.startswith("manutenzione_"):
         nome_dispositivo = query.data.split("_")[1]
-        # Qui puoi aggiungere la logica per gestire la manutenzione del dispositivo selezionato
-        await invia_messaggio(f"Hai selezionato il dispositivo {nome_dispositivo}", update.callback_query.message.chat_id)
+        # Recupera l'indirizzo IP del dispositivo selezionato
+        indirizzo_ip = next((d['indirizzo'] for d in config.indirizzi_ping if d['nome'] == nome_dispositivo), None)
+        
+        # Invia il messaggio con l'indirizzo IP
+        if indirizzo_ip:
+            messaggio = f"{nome_dispositivo} con indirizzo {indirizzo_ip}"
+            await invia_messaggio(messaggio, update.callback_query.message.chat_id)
+            
+            # Aggiungi i bottoni per la manutenzione
+            keyboard = [
+                [InlineKeyboardButton("Maintenence ON", callback_data=f"manutenzione_on_{nome_dispositivo}"),
+                 InlineKeyboardButton("Maintenence OFF", callback_data=f"manutenzione_off_{nome_dispositivo}")],
+            ]
+            await invia_messaggio("Seleziona l'azione da eseguire:", update.callback_query.message.chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await invia_messaggio(f"Errore: dispositivo {nome_dispositivo} non trovato", update.callback_query.message.chat_id)
 
+async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data.startswith("manutenzione_on_"):
+        nome_dispositivo = query.data.split("_")[2]
+        # Esegui azioni per la manutenzione ON
+        await invia_messaggio(f"Manutenzione ON per {nome_dispositivo}", update.callback_query.message.chat_id)
+    elif query.data.startswith("manutenzione_off_"):
+        nome_dispositivo = query.data.split("_")[2]
+        # Esegui azioni per la manutenzione OFF
+        await invia_messaggio(f"Manutenzione OFF per {nome_dispositivo}", update.callback_query.message.chat_id)
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
