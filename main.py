@@ -238,7 +238,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("manutenzione_"):
         nome_dispositivo = query.data.split("_")[1]
         # Qui puoi aggiungere la logica per gestire la manutenzione del dispositivo selezionato
-        await invia_messaggio(f"Hai selezionato il dispositivo {nome_dispositivo}", update.message.chat_id)
+        await invia_messaggio(f"Hai selezionato il dispositivo {nome_dispositivo}", update.callback_query.message.chat_id)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
