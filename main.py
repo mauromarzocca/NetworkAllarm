@@ -287,12 +287,18 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
     if dispositivo_trovato:
         if action == "on":
             # Esegui azioni per la manutenzione ON
-            await invia_messaggio(f"Manutenzione ON per {nome_dispositivo} ({indirizzo_ip})", update.callback_query.message.chat_id)
+            messaggio = f"Manutenzione Attiva su {nome_dispositivo} - {indirizzo_ip}"
+            await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
+            await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
+            scrivi_log(messaggio)
         elif action == "off":
             # Esegui azioni per la manutenzione OFF
-            await invia_messaggio(f"Manutenzione OFF per {nome_dispositivo} ({indirizzo_ip})", update.callback_query.message.chat_id)
+            messaggio = f"Manutenzione Disattiva su {nome_dispositivo} - {indirizzo_ip}"
+            await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
+            await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
+            scrivi_log(messaggio)
     else:
-        await invia_messaggio("Errore: dispositivo non trovato", update.callback_query.message.chat_id)
+        await invia_messaggio("Errore: dispositivo non trovato", update.effective_chat.id)
 
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dispositivi = config.indirizzi_ping
