@@ -235,7 +235,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif query.data == 'log_giornaliero':
         await invia_log_giornaliero(update, context)
-    elif query.data.startswith("manutenzione_"):
+    elif query.data.startswith("manutenzione_") and "_" not in query.data[13:]:
         nome_dispositivo = query.data.split("_")[1]
         # Recupera l'indirizzo IP del dispositivo selezionato
         indirizzo_ip = next((d['indirizzo'] for d in config.indirizzi_ping if d['nome'] == nome_dispositivo), None)
@@ -247,25 +247,21 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Aggiungi i bottoni per la manutenzione
             keyboard = [
-                [InlineKeyboardButton("Maintenence ON", callback_data=f"manutenzione_on_{nome_dispositivo}"),
-                 InlineKeyboardButton("Maintenence OFF", callback_data=f"manutenzione_off_{nome_dispositivo}")],
+                [InlineKeyboardButton("Manutenzione ON", callback_data=f"manutenzione_on_{nome_dispositivo}_{indirizzo_ip}"),
+                 InlineKeyboardButton("Manutenzione OFF", callback_data=f"manutenzione_off_{nome_dispositivo}_{indirizzo_ip}")],
             ]
             await invia_messaggio("Seleziona l'azione da eseguire:", update.callback_query.message.chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await invia_messaggio(f"Errore: dispositivo {nome_dispositivo} non trovato", update.callback_query.message.chat_id)
+    elif query.data.startswith("manutenzione_") and "_" in query.data[13:]:
+        data = query.data.split("_")
+        action = data[1]
+        nome_dispositivo = data[2]
+        indirizzo_ip = data[3]
+        
+        # Chiamata alla funzione manutenzione con i dati estratti
+        await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
 
-async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data.startswith("manutenzione_on_"):
-        nome_dispositivo = query.data.split("_")[2]
-        # Esegui azioni per la manutenzione ON
-        await invia_messaggio(f"Manutenzione ON per {nome_dispositivo}", update.callback_query.message.chat_id)
-    elif query.data.startswith("manutenzione_off_"):
-        nome_dispositivo = query.data.split("_")[2]
-        # Esegui azioni per la manutenzione OFF
-        await invia_messaggio(f"Manutenzione OFF per {nome_dispositivo}", update.callback_query.message.chat_id)
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
@@ -279,6 +275,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_log_giornaliero(update, context)
     elif text == "🔧 Manutenzione":
         await gestisci_manutenzione(update, context)
+
+async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
+    print(f"Nome dispositivo: {nome_dispositivo}, Indirizzo IP: {indirizzo_ip}")  # Messaggio di debug
+
+    # Verifica che il dispositivo esista
+    dispositivo_trovato = any(d['nome'] == nome_dispositivo and d['indirizzo'] == indirizzo_ip for d in config.indirizzi_ping)
+    
+    print(f"Dispositivo trovato: {dispositivo_trovato}")  # Messaggio di debug
+
+    if dispositivo_trovato:
+        if action == "on":
+            # Esegui azioni per la manutenzione ON
+            await invia_messaggio(f"Manutenzione ON per {nome_dispositivo} ({indirizzo_ip})", update.callback_query.message.chat_id)
+        elif action == "off":
+            # Esegui azioni per la manutenzione OFF
+            await invia_messaggio(f"Manutenzione OFF per {nome_dispositivo} ({indirizzo_ip})", update.callback_query.message.chat_id)
+    else:
+        await invia_messaggio("Errore: dispositivo non trovato", update.callback_query.message.chat_id)
 
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dispositivi = config.indirizzi_ping
