@@ -9,6 +9,7 @@ import config
 from config import cartella_log, nome_file
 
 # Variabile globale per la modalità manutenzione
+dispositivi_in_manutenzione = set()
 modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
 messaggio_stato_id = None
@@ -277,28 +278,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await gestisci_manutenzione(update, context)
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
-    print(f"Nome dispositivo: {nome_dispositivo}, Indirizzo IP: {indirizzo_ip}")  # Messaggio di debug
-
-    # Verifica che il dispositivo esista
-    dispositivo_trovato = any(d['nome'] == nome_dispositivo and d['indirizzo'] == indirizzo_ip for d in config.indirizzi_ping)
+    global dispositivi_in_manutenzione
     
-    print(f"Dispositivo trovato: {dispositivo_trovato}")  # Messaggio di debug
-
-    if dispositivo_trovato:
-        if action == "on":
-            # Esegui azioni per la manutenzione ON
-            messaggio = f"Manutenzione Attiva su {nome_dispositivo} - {indirizzo_ip}"
-            await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
-            await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
-            scrivi_log(messaggio)
-        elif action == "off":
-            # Esegui azioni per la manutenzione OFF
-            messaggio = f"Manutenzione Disattiva su {nome_dispositivo} - {indirizzo_ip}"
-            await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
-            await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
-            scrivi_log(messaggio)
-    else:
-        await invia_messaggio("Errore: dispositivo non trovato", update.effective_chat.id)
+    if action == "on":
+        # Esegui azioni per la manutenzione ON
+        messaggio = f"Manutenzione Attiva su {nome_dispositivo} - {indirizzo_ip}"
+        await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
+        await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
+        scrivi_log(messaggio)
+        dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))  # Aggiungi il dispositivo alla lista di quelli in manutenzione
+    elif action == "off":
+        # Esegui azioni per la manutenzione OFF
+        messaggio = f"Manutenzione Disattiva su {nome_dispositivo} - {indirizzo_ip}"
+        await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
+        await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
+        scrivi_log(messaggio)
+        dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))  # Rimuovi il dispositivo dalla lista di quelli in manutenzione
 
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dispositivi = config.indirizzi_ping
@@ -353,10 +348,11 @@ def main():
                         
                         if connessione_attuale:
                             if not stato_connessioni[indirizzo_ip]:
-                                await invia_messaggio(
-                                    f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
-                                    config.chat_id)
-                                scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
+                                if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
+                                    await invia_messaggio(
+                                        f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
+                                        config.chat_id)
+                                    scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
                                 stato_connessioni[indirizzo_ip] = True
                             break
                         else:
@@ -364,10 +360,11 @@ def main():
                             await asyncio.sleep(30)
 
                     if not connessione_attuale and stato_connessioni[indirizzo_ip]:
-                        await invia_messaggio(
-                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
-                            config.chat_id)
-                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                        if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
+                            await invia_messaggio(
+                                f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
+                                config.chat_id)
+                            scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                         stato_connessioni[indirizzo_ip] = False
 
                     # Se almeno un dispositivo è online, non attiviamo l'allarme.
