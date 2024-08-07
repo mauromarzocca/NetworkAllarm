@@ -157,22 +157,28 @@ async def invia_log_corrente(chat_id):
         await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_corrente}: {str(e)}", chat_id)
 
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global modalita_manutenzione
+    global modalita_manutenzione, dispositivi_in_manutenzione
     
     if not modalita_manutenzione:
         modalita_manutenzione = True
         scrivi_log("Inizio manutenzione")
         await invia_messaggio("🔧 Inizio manutenzione", config.chat_id)
         await aggiorna_messaggio_stato(update.effective_chat.id)
+        
+        # Aggiungi tutti i dispositivi alla lista di quelli in manutenzione
+        dispositivi_in_manutenzione.update((nome_dispositivo, indirizzo_ip) for dispositivo in config.indirizzi_ping for nome_dispositivo, indirizzo_ip in [(dispositivo['nome'], dispositivo['indirizzo'])])
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global modalita_manutenzione
+    global modalita_manutenzione, dispositivi_in_manutenzione
     
     if modalita_manutenzione:
         modalita_manutenzione = False
         scrivi_log("Fine manutenzione")
         await invia_messaggio("✅ Fine manutenzione", config.chat_id)
         await aggiorna_messaggio_stato(update.effective_chat.id)
+        
+        # Rimuovi tutti i dispositivi dalla lista di quelli in manutenzione
+        dispositivi_in_manutenzione.clear()
 
 async def aggiorna_messaggio_stato(chat_id):
     global messaggio_stato_id
