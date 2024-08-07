@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 6.13
+Versione : 6.14
 
 ![logo](/img/logo.png)
 
@@ -188,6 +188,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 6.12 : Implementata la possibilità di configurare il path di salvataggio nel file config invece che nel main.
 - Versione 6.12.1 : Bug Fix
 - Versione 6.13 : Migliorato il codice, in particolare se nel log è presente solo la stringa "Avvio dello Script" e "Inizio giornata", verrà inviato solo "Nessun evento da segnalare".
+- Versione 6.14 : Implementata la funzionalità "Maintenence" che permette di mettere in manutenzione il dispositivo singolo. Viene gestita tramite bottoni.
 
 ---
 
