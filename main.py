@@ -115,6 +115,9 @@ async def invia_contenuto_file():
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
 
+        # Conta il numero di occorrenze di "Avvio dello script"
+        numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
+
         # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
         contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
             excl in line.lower() for excl in ["inizio giornata", "avvio dello script"])]
@@ -123,6 +126,10 @@ async def invia_contenuto_file():
             print("Nessun evento da segnalare.")
             await invia_messaggio("✅ Nessun evento da segnalare.", config.chat_id)
         else:
+            if numero_avvii > 1:
+                messaggio_avvii = f"Avvio dello script : {numero_avvii}"
+                contenuto_da_inviare.insert(0, messaggio_avvii)
+
             contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
             print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
             await invia_messaggi_divisi(contenuto_da_inviare, config.chat_id)
@@ -144,13 +151,24 @@ async def invia_log_corrente(chat_id):
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
         
-        contenuto_da_inviare = [line.strip() for line in contenuto_file if "Inizio giornata" not in line]
-        
-        if contenuto_da_inviare:
-            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
-            await invia_messaggi_divisi(contenuto_da_inviare, chat_id)
+        # Conta il numero di occorrenze di "Avvio dello script"
+        numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
+
+        # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
+        contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
+            excl in line.lower() for excl in ["inizio giornata", "avvio dello script"])]
+
+        if not contenuto_da_inviare:
+            print("Nessun evento da segnalare.")
+            await invia_messaggio("✅ Nessun evento da segnalare.", chat_id)
         else:
-            await invia_messaggio("Nessun evento da segnalare.", chat_id)
+            if numero_avvii > 1:
+                messaggio_avvii = f"Avvio dello script : {numero_avvii}"
+                contenuto_da_inviare.insert(0, messaggio_avvii)
+
+            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
+            print("Contenuto del file testuale del giorno corrente:", contenuto_da_inviare)
+            await invia_messaggi_divisi(contenuto_da_inviare, chat_id)
     
     except Exception as e:
         print("Errore durante la lettura del file di log:", str(e))
@@ -223,7 +241,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
             reply_markup=get_custom_keyboard()
         )
-        await aggiorna_messaggio_stato(update.message.chat_id)
+        #await aggiorna_messaggio_stato(update.message.chat_id)
     else:
         await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
 
