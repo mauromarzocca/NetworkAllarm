@@ -169,9 +169,10 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
         dispositivi_in_manutenzione.update((nome_dispositivo, indirizzo_ip) for dispositivo in config.indirizzi_ping for nome_dispositivo, indirizzo_ip in [(dispositivo['nome'], dispositivo['indirizzo'])])
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global modalita_manutenzione, dispositivi_in_manutenzione
+    global modalita_manutenzione, dispositivi_in_manutenzione, allarme_attivo
     
     if modalita_manutenzione:
+        allarme_attivo = False
         modalita_manutenzione = False
         scrivi_log("Fine manutenzione")
         await invia_messaggio("✅ Fine manutenzione", config.chat_id)
@@ -300,7 +301,7 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
         await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
         scrivi_log(messaggio)
         dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))  # Rimuovi il dispositivo dalla lista di quelli in manutenzione
-
+        
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dispositivi = config.indirizzi_ping
     pulsanti = []
