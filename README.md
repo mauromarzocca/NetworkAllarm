@@ -10,6 +10,8 @@ Versione : 6.14.5
   - [Indice](#indice)
   - [Introduzione](#introduzione)
   - [Anteprima](#anteprima)
+    - [Pre 6.14](#pre-614)
+    - [6.14](#614)
   - [Installazione](#installazione)
   - [Configurazione](#configurazione)
   - [Utilizzo](#utilizzo)
@@ -36,7 +38,20 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 
 ## Anteprima
 
+### Pre 6.14
+
 ![preview](/img/screenshot.jpeg)
+
+---
+
+### 6.14
+
+![preview](/img/6.14.5%20minor.png){ align=center }
+
+---
+
+![preview](/img/6.14.5%20desktop.png){ align=center }
+
 
 ---
 
