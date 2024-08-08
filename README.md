@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 6.14.4
+Versione : 6.14.5
 
 ![logo](/img/logo.png)
 
@@ -193,6 +193,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 6.14.2 : Migliorata tabulazione di "Stato connessione".
 - Versione 6.14.3 : Bug Fix
 - Versione 6.14.4 : Inserito il conteggio di "Avvio dello script".
+- Versione 6.14.5 : Miglioramento dell'invio del log.
 
 ---
 
