@@ -18,6 +18,7 @@ Versione : 6.14.5
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
   - [Test Svolti](#test-svolti)
   - [Futuri Upgrade](#futuri-upgrade)
+    - [Già Implementati](#già-implementati)
   - [Note sulle versioni](#note-sulle-versioni)
   - [Licenza](#licenza)
   - [Autori](#autori)
@@ -164,13 +165,16 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 ## Futuri Upgrade
 
 - Creazione del container Docker.
-- ~~Ping dal Bot~~ (Introdotto nella Build 6.5 con lo Stato Connessione)
-- ~~Miglioramento delle notifiche nel caso in cui tutti i dispositivi non rispondono.~~ (Risolto nella Build 6.0.1)
 - Bug Fix continuo.
 - Versione Inglese.
 - Inserimento dei dispositivi da monitorare tramite bot.
-- ~~Maintenence Mode anche per dispositivi singoli.~~ (Implementato nella build 6.14)
 - Utilizzo di un database invece che file testuali.
+
+### Già Implementati
+
+- ~~Miglioramento delle notifiche nel caso in cui tutti i dispositivi non rispondono.~~ (Risolto nella Build 6.0.1)
+- ~~Ping dal Bot~~ (Introdotto nella Build 6.5 con lo Stato Connessione)
+- ~~Maintenence Mode anche per dispositivi singoli.~~ (Implementato nella build 6.14)
 
 ---
 
