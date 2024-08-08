@@ -181,7 +181,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
     Novità: Inserito il file config.py per una configurazione più flessibile e centralizzata.
     Modifiche: Tutte le impostazioni statiche e sensibili sono state spostate nel file config.py.
 
-- Versione 5.10 - 6.13
+- Versione 5.10 - 6.14.5
 
     Novità: Suddivisione del programma in più file per migliorare la leggibilità e la manutenzione del codice.
 
