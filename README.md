@@ -46,12 +46,15 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 
 ### 6.14
 
-![preview](/img/6.14.5%20minor.png){ align=center }
+<div align=center>
+
+![preview](/img/6.14.5%20minor.png)
 
 ---
 
-![preview](/img/6.14.5%20desktop.png){ align=center }
+![preview](/img/6.14.5%20desktop.png)
 
+</div>
 
 ---
 
