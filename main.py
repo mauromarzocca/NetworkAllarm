@@ -323,6 +323,10 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     messaggio = "\n".join(stati_connessioni)
     await invia_messaggio(messaggio, update.message.chat_id)
 
+async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    await invia_log_corrente(chat_id)
+
 def main():
     application = ApplicationBuilder().token(config.bot_token).build()
     
