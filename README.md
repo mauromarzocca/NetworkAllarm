@@ -151,7 +151,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Bug Fix continuo.
 - Versione Inglese.
 - Inserimento dei dispositivi da monitorare tramite bot.
-- Maintenence Mode anche per dispositivi singoli.
+- ~~Maintenence Mode anche per dispositivi singoli.~~ (Implementato nella build 6.14)
 - Utilizzo di un database invece che file testuali.
 
 ---
