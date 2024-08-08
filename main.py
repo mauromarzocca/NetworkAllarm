@@ -154,26 +154,16 @@ async def invia_log_corrente(chat_id):
         # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
 
-        # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
-        contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
-            excl in line.lower() for excl in ["inizio giornata", "avvio dello script"])]
-
-        if not contenuto_da_inviare:
-            print("Nessun evento da segnalare.")
-            await invia_messaggio("✅ Nessun evento da segnalare.", chat_id)
+        if numero_avvii > 1:
+            messaggio_avvii = f"Avvio dello script : {numero_avvii}"
+            await invia_messaggio(messaggio_avvii, chat_id)
         else:
-            if numero_avvii > 1:
-                messaggio_avvii = f"Avvio dello script : {numero_avvii}"
-                contenuto_da_inviare.insert(0, messaggio_avvii)
-
-            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
-            print("Contenuto del file testuale del giorno corrente:", contenuto_da_inviare)
-            await invia_messaggi_divisi(contenuto_da_inviare, chat_id)
+            await invia_messaggio("Nessun evento da segnalare.", chat_id)
     
     except Exception as e:
         print("Errore durante la lettura del file di log:", str(e))
         await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_corrente}: {str(e)}", chat_id)
-
+        
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, dispositivi_in_manutenzione
     
