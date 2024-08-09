@@ -125,6 +125,10 @@ async def invia_contenuto_file():
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
             await invia_messaggio("✅ Nessun evento da segnalare.", config.chat_id)
+            # Conta il numero di occorrenze di "Avvio dello script"
+            numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
+            if numero_avvii > 1:
+                await invia_messaggio(f"Avvio dello script: {numero_avvii}", config.chat_id)
         else:
             if numero_avvii > 1:
                 messaggio_avvii = f"Avvio dello script : {numero_avvii}"
@@ -161,6 +165,10 @@ async def invia_log_corrente(chat_id):
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
             await invia_messaggio("✅ Nessun evento da segnalare.", chat_id)
+            # Conta il numero di occorrenze di "Avvio dello script"
+            numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
+            if numero_avvii > 1:
+                await invia_messaggio(f"Avvio dello script: {numero_avvii}", chat_id)
         else:
             if numero_avvii > 1:
                 messaggio_avvii = f"Avvio dello script : {numero_avvii}"
