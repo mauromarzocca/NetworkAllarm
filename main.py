@@ -1,7 +1,6 @@
 import subprocess
 import asyncio
 import os
-import ast
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -219,11 +218,10 @@ def get_keyboard():
         InlineKeyboardButton("✅ Fine Manutenzione", callback_data='fine_manutenzione'),
         InlineKeyboardButton("📈 Stato Connessioni", callback_data='stato_connessioni'),
         InlineKeyboardButton("📝 Log Giornaliero", callback_data='log_giornaliero'),
-        InlineKeyboardButton("🧑‍💻 Manutenzione", callback_data='manutenzione'),
-        InlineKeyboardButton("Inserimento", callback_data='inserimento')
+        InlineKeyboardButton("🔧 Manutenzione", callback_data='manutenzione')
     ]
     
-    return InlineKeyboardMarkup([button_list[:2], button_list[2:4], button_list[4:]])
+    return InlineKeyboardMarkup([button_list[:2], button_list[2:]])
 
 def get_custom_keyboard():
     button_list = [
@@ -231,15 +229,10 @@ def get_custom_keyboard():
         KeyboardButton("✅ Fine Manutenzione"),
         KeyboardButton("📈 Stato Connessioni"),
         KeyboardButton("📝 Log Giornaliero"),
-        KeyboardButton("🧑‍💻 Manutenzione"),
-        KeyboardButton("✍️ Inserimento")
+        KeyboardButton("🔧 Manutenzione")
     ]
     
-    keyboard = []
-    for i in range(0, len(button_list), 2):
-        keyboard.append(button_list[i:i+2])
-    
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup([button_list[:2], button_list[2:]], resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
@@ -268,9 +261,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif query.data == 'log_giornaliero':
         await invia_log_giornaliero(update, context)
-    elif query.data == 'inserimento':
-        await invia_messaggio("Inserisci il nome del dispositivo:", update.callback_query.message.chat_id)
-        context.user_data['inserimento_step'] = 1
     elif query.data.startswith("manutenzione_") and "_" not in query.data[13:]:
         nome_dispositivo = query.data.split("_")[1]
         # Recupera l'indirizzo IP del dispositivo selezionato
@@ -309,11 +299,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif text == "📝 Log Giornaliero":
         await invia_log_giornaliero(update, context)
-    elif text == "🧑‍💻 Manutenzione":
+    elif text == "🔧 Manutenzione":
         await gestisci_manutenzione(update, context)
-    elif text == "✍️ Inserimento":
-        await update.message.reply_text("Inserisci il nome del dispositivo:")
-        context.user_data['inserimento_step'] = 1
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
@@ -358,70 +345,14 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
-async def inserimento_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    
-    if context.user_data.get('inserimento_step') == 1:
-        context.user_data['nome_dispositivo'] = text
-        await update.message.reply_text("Inserisci l'indirizzo IP del dispositivo:")
-        context.user_data['inserimento_step'] = 2
-    elif context.user_data.get('inserimento_step') == 2:
-        context.user_data['indirizzo_ip'] = text
-        nome_dispositivo = context.user_data['nome_dispositivo']
-        indirizzo_ip = context.user_data['indirizzo_ip']
-        messaggio = f"Hai inserito:\nNome: {nome_dispositivo}\nIndirizzo IP: {indirizzo_ip}\nConferma?"
-        await update.message.reply_text(messaggio, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Conferma", callback_data='conferma_inserimento'),
-             InlineKeyboardButton("Annulla", callback_data='annulla_inserimento')]
-        ]))
-        context.user_data['inserimento_step'] = 3
-
-async def conferma_inserimento(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    nome_dispositivo = context.user_data['nome_dispositivo']
-    indirizzo_ip = context.user_data['indirizzo_ip']
-
-    print(f"Nome dispositivo: {nome_dispositivo}")
-    print(f"Indirizzo IP: {indirizzo_ip}")
-
-    try:
-        with open('config.py', 'r') as file:
-            lines = file.readlines()
-
-        # Find the line that contains the indirizzi_ping list
-        for i, line in enumerate(lines):
-            if line.strip().startswith('indirizzi_ping = ['):
-                # Read the indirizzi_ping list
-                indirizzi_ping = ast.literal_eval(''.join(lines[i:i+10]))
-
-                # Add the new device to the list
-                indirizzi_ping.append({'nome': nome_dispositivo, 'indirizzo': indirizzo_ip})
-
-                # Write the updated list back to the file
-                lines[i] = f"indirizzi_ping = {str(indirizzi_ping)}\n"
-                break
-
-        with open('config.py', 'w') as file:
-            file.writelines(lines)
-
-        await update.callback_query.message.reply_text("Inserimento effettuato con successo!")
-    except Exception as e:
-        await update.callback_query.message.reply_text(f"Errore durante l'inserimento: {str(e)}")
-
-    context.user_data.clear()
-
 def main():
     application = ApplicationBuilder().token(config.bot_token).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🧑‍💻 Manutenzione|✍️ Inserimento)$"), button_handler))
-    application.add_handler(MessageHandler(filters.TEXT, inserimento_handler))
-    application.add_handler(CallbackQueryHandler(conferma_inserimento, pattern='conferma_inserimento'))
-    
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione)$"), button_handler))
+
     async def monitoraggio():
         # La funzione principale di monitoraggio
         scrivi_log("Avvio dello script")
