@@ -220,6 +220,21 @@ async def aggiorna_messaggio_stato(chat_id):
 def utente_autorizzato(user_id):
     return user_id in config.autorizzati
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if utente_autorizzato(user.id):
+        await update.message.reply_text(
+            'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
+            reply_markup=get_custom_keyboard()
+        )
+        #await aggiorna_messaggio_stato(update.message.chat_id)
+    else:
+        await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
+
+async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
+    await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
+
 def get_keyboard():
     button_list = [
         InlineKeyboardButton("🔧 Inizio Manutenzione", callback_data='inizio_manutenzione'),
@@ -241,21 +256,6 @@ def get_custom_keyboard():
     ]
     
     return ReplyKeyboardMarkup([button_list[:2], button_list[2:]], resize_keyboard=True)
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    if utente_autorizzato(user.id):
-        await update.message.reply_text(
-            'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
-            reply_markup=get_custom_keyboard()
-        )
-        #await aggiorna_messaggio_stato(update.message.chat_id)
-    else:
-        await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
-
-async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
-    await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
