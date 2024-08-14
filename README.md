@@ -1,6 +1,5 @@
 # NetworkAllarm
 
-Versione : 6.14.5
 Versione : 7.0
 
 ![logo](/img/logo.png)
