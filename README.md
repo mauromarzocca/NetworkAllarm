@@ -1,6 +1,7 @@
 # NetworkAllarm
 
 Versione : 6.14.5
+Versione : 7.0
 
 ![logo](/img/logo.png)
 
@@ -74,6 +75,14 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
     pip install -r requirements.txt
     ```
 
+3. Installa MySQL per il tuo Sistema Operativo.
+
+4. Lancia MySQL ed esegui:
+
+      ```code
+        CREATE DATABASE NetworkAllarm;
+      ```
+
 ---
 
 ## Configurazione
@@ -97,6 +106,11 @@ indirizzi_ping = [
     {"nome": "Dispositivo 1", "indirizzo": "192.168.1.1"},
     {"nome": "Dispositivo 2", "indirizzo": "192.168.1.2"},
 ]
+
+# Credenziali MySQL
+DB_USER = 'tuo_utente'
+DB_PASSWORD = 'tua_password'
+
 ```
 
 ---
@@ -216,6 +230,8 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 6.14.3 : Bug Fix
 - Versione 6.14.4 : Inserito il conteggio di "Avvio dello script".
 - Versione 6.14.5 : Miglioramento dell'invio del log.
+
+- Versione 7.0 : Implementazione di un Database MySQL.
 
 ---
 
