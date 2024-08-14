@@ -7,6 +7,50 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import pytz
 import config
 from config import cartella_log, nome_file
+import mysql.connector
+from config import DB_USER, DB_PASSWORD
+from mysql.connector import errorcode
+
+cnx = mysql.connector.connect(
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host='localhost',
+    database='NetworkAllarm'
+)
+
+
+def create_database_and_table():
+    try:
+        # Connettersi al server MySQL
+        cnx = mysql.connector.connect(user=config.DB_USER, password=config.DB_PASSWORD, host='localhost', database='NetworkAllarm')        
+        cursor = cnx.cursor()
+        
+        # Creare il database se non esiste
+        cursor.execute("CREATE DATABASE IF NOT EXISTS NetworkAllarm")
+        cursor.execute("USE NetworkAllarm")
+        
+        # Creare la tabella monitor se non esiste
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS monitor (
+            ID INT AUTO_INCREMENT PRIMARY KEY,
+            Nome VARCHAR(255) NOT NULL,
+            IP VARCHAR(15) NOT NULL,
+            Maintenence BOOLEAN DEFAULT FALSE
+        )
+        """
+        cursor.execute(create_table_query)
+        print("Database e tabella monitor pronti all'uso.")
+        
+        cursor.close()
+        cnx.close()
+        
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print("Errore di accesso: verifica utente o password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            print("Database non esiste.")
+        else:
+            print(err)
 
 # Variabile globale per la modalità manutenzione
 dispositivi_in_manutenzione = set()
@@ -18,6 +62,9 @@ allarme_attivo = False
 
 # Utilizza la cartella dei log definita in config.py
 log_file = os.path.join(cartella_log, nome_file)
+
+create_database_and_table()
+
 
 # Funzione per inviare un messaggio
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
