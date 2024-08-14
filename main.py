@@ -34,7 +34,7 @@ def create_database_and_table():
         CREATE TABLE IF NOT EXISTS monitor (
             ID INT AUTO_INCREMENT PRIMARY KEY,
             Nome VARCHAR(255) NOT NULL,
-            IP VARCHAR(15) NOT NULL,
+            IP VARCHAR(15) NOT NULL UNIQUE,
             Maintenence BOOLEAN DEFAULT FALSE
         )
         """
