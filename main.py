@@ -117,8 +117,6 @@ def create_database_and_table():
 
 # Esegui la funzione principale per creare il database e la tabella
 create_database_and_table()
-# Variabile per l'ID del messaggio dinamico
-messaggio_stato_id = None
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
@@ -314,18 +312,36 @@ async def invia_log_corrente(chat_id):
         print("Errore durante la lettura del file di log:", str(e))
         await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_corrente}: {str(e)}", chat_id)
 
+cnx = None
+
+def get_db_connection():
+    global cnx
+    if cnx is None:
+        try:
+            cnx = mysql.connector.connect(
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST,
+                database=DB_NAME
+            )
+        except mysql.connector.Error as err:
+            print(f"Errore di connessione al database: {err}")
+            return None
+    return cnx
+
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, dispositivi_in_manutenzione
     
     if not modalita_manutenzione:
         modalita_manutenzione = True
         scrivi_log("Inizio manutenzione")
-        await invia_messaggio("🔧 Inizio manutenzione", config.chat_id)
-        await aggiorna_messaggio_stato(update.effective_chat.id)
+        await invia_messaggio("Inizio manutenzione", config.chat_id)
+        
+        # Stabilisci la connessione al database
+        cnx = get_db_connection()
+        cursor = cnx.cursor()
         
         # Aggiorna il valore di Maintenence nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
         query = ("UPDATE monitor SET Maintenence = TRUE")
         cursor.execute(query)
         cnx.commit()
@@ -362,16 +378,6 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
         cursor.close()
         cnx.close()
 
-async def aggiorna_messaggio_stato(chat_id):
-    global messaggio_stato_id
-    
-    stato = "Modalità Manutenzione: Attiva" if modalita_manutenzione else "Modalità Manutenzione: Non Attiva"
-    
-    if messaggio_stato_id:
-        await modifica_messaggio(chat_id, messaggio_stato_id, stato)
-    else:
-        messaggio_stato_id = await invia_messaggio(stato, chat_id)
-
 def utente_autorizzato(user_id):
     return user_id in config.autorizzati
 
@@ -382,7 +388,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
             reply_markup=get_custom_keyboard()
         )
-        #await aggiorna_messaggio_stato(update.message.chat_id)
     else:
         await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
 
