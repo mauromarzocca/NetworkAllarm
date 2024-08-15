@@ -18,37 +18,71 @@ cnx = mysql.connector.connect(
     database='NetworkAllarm'
 )
 
+def import_addresses(cursor):
+    """
+    Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
+    Se un record esiste già, aggiorna il nome e l'indirizzo IP.
+    """
+    for indirizzo in config.indirizzi_ping:
+        try:
+            query = """
+            INSERT INTO monitor (Nome, IP) 
+            VALUES (%s, %s) 
+            ON DUPLICATE KEY UPDATE Nome = VALUES(Nome), IP = VALUES(IP)
+            """
+            cursor.execute(query, (indirizzo['nome'], indirizzo['indirizzo']))
+        except mysql.connector.Error as err:
+            print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
+
+def renumber_ids(cursor):
+    """
+    Rinumerare gli ID della tabella monitor per renderli sequenziali.
+    """
+    try:
+        cursor.execute("SET @count = 0;")
+        cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
+        cursor.execute("ALTER TABLE monitor AUTO_INCREMENT = 1;")
+        print("ID rinumerati con successo.")
+    except mysql.connector.Error as err:
+        print(f"Errore durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
     try:
-        # Connettersi al server MySQL
-        cnx = mysql.connector.connect(user=config.DB_USER, password=config.DB_PASSWORD, host='localhost', database='NetworkAllarm')        
+        cnx = mysql.connector.connect(user=config.DB_USER, password=config.DB_PASSWORD, host='localhost', database='NetworkAllarm')
         cursor = cnx.cursor()
-        
+
         # Creare il database se non esiste
         cursor.execute("CREATE DATABASE IF NOT EXISTS NetworkAllarm")
         cursor.execute("USE NetworkAllarm")
-        
+
         # Creare la tabella monitor se non esiste
-        create_table_query = """
+        create_table_query = '''
         CREATE TABLE IF NOT EXISTS monitor (
             ID INT AUTO_INCREMENT PRIMARY KEY,
             Nome VARCHAR(255) NOT NULL,
             IP VARCHAR(15) NOT NULL UNIQUE,
             Maintenence BOOLEAN DEFAULT FALSE
-        )
-        """
+        ) AUTO_INCREMENT=1;
+        '''
         cursor.execute(create_table_query)
+
+        # Importare indirizzi_ping nel database
+        import_addresses(cursor)
+
+        # Rinumerare gli ID per mantenerli sequenziali
+        renumber_ids(cursor)
+
+        cnx.commit()
         print("Database e tabella monitor pronti all'uso.")
-        
+
         cursor.close()
         cnx.close()
-        
+
     except mysql.connector.Error as err:
         if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            print("Errore di accesso: verifica utente o password")
+            print("Errore di accesso: nome utente o password errati")
         elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            print("Database non esiste.")
+            print("Il database specificato non esiste.")
         else:
             print(err)
 
