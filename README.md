@@ -76,12 +76,6 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 
 3. Installa MySQL per il tuo Sistema Operativo.
 
-4. Lancia MySQL ed esegui:
-
-      ```code
-        CREATE DATABASE NetworkAllarm;
-      ```
-
 ---
 
 ## Configurazione
@@ -106,9 +100,10 @@ indirizzi_ping = [
     {"nome": "Dispositivo 2", "indirizzo": "192.168.1.2"},
 ]
 
-# Credenziali MySQL
+# Credenziali e Nome Database
 DB_USER = 'tuo_utente'
 DB_PASSWORD = 'tua_password'
+DB_NAME = 'NetworkAllarm'
 
 ```
 
