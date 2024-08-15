@@ -21,3 +21,4 @@ indirizzi_ping = [
 # Credenziali MySQL
 DB_USER = 'tuo_utente'
 DB_PASSWORD = 'tua_password'
+DB_NAME = 'NetworkAllarm'
