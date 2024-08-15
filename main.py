@@ -9,7 +9,7 @@ import config
 from config import cartella_log, nome_file
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
-from mysql.connector import errorcode
+import mysql.connector
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -331,31 +331,35 @@ def get_db_connection():
 
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, dispositivi_in_manutenzione
-    
+
     if not modalita_manutenzione:
         modalita_manutenzione = True
         scrivi_log("Inizio manutenzione")
         await invia_messaggio("Inizio manutenzione", config.chat_id)
-        
-        # Stabilisci la connessione al database
-        cnx = get_db_connection()
-        cursor = cnx.cursor()
-        
-        # Aggiorna il valore di Maintenence nel database
-        query = ("UPDATE monitor SET Maintenence = TRUE")
-        cursor.execute(query)
-        cnx.commit()
-        cursor.close()
-        cnx.close()
-        
-        # Recupera tutti i dispositivi dal database e aggiungili alla lista di quelli in manutenzione
-        cursor = cnx.cursor()
-        query = ("SELECT Nome, IP FROM monitor")
-        cursor.execute(query)
-        dispositivi = cursor.fetchall()
-        dispositivi_in_manutenzione.update((nome, indirizzo) for nome, indirizzo in dispositivi)
-        cursor.close()
-        cnx.close()
+
+        # Creare la connessione al database
+        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+
+        # Controllare se la connessione è ancora disponibile
+        if cnx.is_connected():
+            cursor = cnx.cursor()
+
+            # Aggiorna il valore di Maintenence nel database
+            query = ("UPDATE monitor SET Maintenence = TRUE")
+            cursor.execute(query)
+            cnx.commit()
+
+            # Recupera tutti i dispositivi dal database e aggiungili alla lista di quelli in manutenzione
+            query = ("SELECT Nome, IP FROM monitor")
+            cursor.execute(query)
+            dispositivi = cursor.fetchall()
+            dispositivi_in_manutenzione.update((nome, indirizzo) for nome, indirizzo in dispositivi)
+
+            cursor.close()
+            cnx.close()
+        else:
+            scrivi_log("Errore: connessione al database non disponibile")
+            await invia_messaggio("Errore: connessione al database non disponibile", config.chat_id)
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, dispositivi_in_manutenzione, allarme_attivo
