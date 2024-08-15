@@ -400,15 +400,20 @@ async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
 
 def get_keyboard():
-    button_list = [
+    button_list_row1 = [
         InlineKeyboardButton("🔧 Inizio Manutenzione", callback_data='inizio_manutenzione'),
-        InlineKeyboardButton("✅ Fine Manutenzione", callback_data='fine_manutenzione'),
+        InlineKeyboardButton("✅ Fine Manutenzione", callback_data='fine_manutenzione')
+    ]
+    button_list_row2 = [
         InlineKeyboardButton("📈 Stato Connessioni", callback_data='stato_connessioni'),
-        InlineKeyboardButton("📝 Log Giornaliero", callback_data='log_giornaliero'),
-        InlineKeyboardButton("🔧 Manutenzione", callback_data='manutenzione')
+        InlineKeyboardButton("📝 Log Giornaliero", callback_data='log_giornaliero')
+    ]
+    button_list_row3 = [
+        InlineKeyboardButton("🔧 Manutenzione", callback_data='manutenzione'),
+        InlineKeyboardButton("⚙️ Gestione", callback_data='gestione')
     ]
     
-    return InlineKeyboardMarkup([button_list[:2], button_list[2:]])
+    return InlineKeyboardMarkup([button_list_row1, button_list_row2, button_list_row3])
 
 def get_custom_keyboard():
     button_list = [
@@ -416,10 +421,11 @@ def get_custom_keyboard():
         KeyboardButton("✅ Fine Manutenzione"),
         KeyboardButton("📈 Stato Connessioni"),
         KeyboardButton("📝 Log Giornaliero"),
-        KeyboardButton("🔧 Manutenzione")
+        KeyboardButton("🔧 Manutenzione"),
+        KeyboardButton("⚙️ Gestione")
     ]
     
-    return ReplyKeyboardMarkup([button_list[:2], button_list[2:]], resize_keyboard=True)
+    return ReplyKeyboardMarkup([button_list[:2], button_list[2:4], button_list[4:]], resize_keyboard=True)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -546,6 +552,11 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
+async def gestione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Codice per gestire la gestione
+    await invia_messaggio("Gestione...", update.effective_chat.id)
+
+
 def main():
     application = ApplicationBuilder().token(config.bot_token).build()
     
@@ -553,6 +564,7 @@ def main():
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione)$"), button_handler))
+    application.add_handler(CallbackQueryHandler(gestione, pattern='gestione'))
 
     global dispositivi_in_manutenzione
     dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
