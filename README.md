@@ -14,6 +14,7 @@ Versione : 7.0
     - [6.14](#614)
   - [Installazione](#installazione)
   - [Configurazione](#configurazione)
+    - [NB](#nb)
   - [Utilizzo](#utilizzo)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
   - [Test Svolti](#test-svolti)
@@ -106,6 +107,10 @@ DB_PASSWORD = 'tua_password'
 DB_NAME = 'NetworkAllarm'
 
 ```
+
+### NB
+
+A partire dalla versione 7.0, tutto quello che viene incluso nella variabile 'indirizzi_ping', viene automaticamente importato nel Database.
 
 ---
 
