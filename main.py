@@ -117,8 +117,6 @@ def create_database_and_table():
 
 # Esegui la funzione principale per creare il database e la tabella
 create_database_and_table()
-# Variabile globale per la modalità manutenzione
-modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
 messaggio_stato_id = None
 # Variabile globale per lo stato dell'allarme
@@ -549,6 +547,18 @@ def main():
 
     global dispositivi_in_manutenzione
     dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
+
+    # Determina la modalità manutenzione dal database
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Maintenence FROM monitor")
+    cursor.execute(query)
+    results = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
+    global modalita_manutenzione
+    modalita_manutenzione = all(result[0] for result in results)
 
     async def monitoraggio():
         # La funzione principale di monitoraggio
