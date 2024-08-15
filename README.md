@@ -21,6 +21,9 @@ Versione : 7.0
   - [Futuri Upgrade](#futuri-upgrade)
     - [Già Implementati](#già-implementati)
   - [Note sulle versioni](#note-sulle-versioni)
+    - [Versione 4.0 - 4.5](#versione-40---45)
+    - [Versione 5.10 - 6.14.5](#versione-510---6145)
+    - [Versione 7](#versione-7)
   - [Licenza](#licenza)
   - [Autori](#autori)
   - [Contribuire](#contribuire)
@@ -193,21 +196,22 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 
 ## Note sulle versioni
 
-- Versione 4.0 - 4.5
+### Versione 4.0 - 4.5
 
-    Novità: Inserito il file config.py per una configurazione più flessibile e centralizzata.
-    Modifiche: Tutte le impostazioni statiche e sensibili sono state spostate nel file config.py.
+  Novità: Inserito il file config.py per una configurazione più flessibile e centralizzata.
+  Modifiche: Tutte le impostazioni statiche e sensibili sono state spostate nel file config.py.
 
-- Versione 5.10 - 6.14.5
+### Versione 5.10 - 6.14.5
 
-    Novità: Suddivisione del programma in più file per migliorare la leggibilità e la manutenzione del codice.
+  Novità: Suddivisione del programma in più file per migliorare la leggibilità e la manutenzione del codice.
 
-    Modifiche:
-  - [main.py](./main.py): Script principale per l'avvio del bot e del monitoraggio.
-  - [bot.py](bot.py): Contiene le funzioni per la gestione del bot Telegram.
-  - [monitor.py](./monitor.py): Contiene le funzioni per il monitoraggio della connessione Ethernet.
-  - [utils.py](./utils.py): Contiene funzioni di utilità generiche (invio messaggi, logging, ecc.).
-  - [status.py](./status.py): Contiene lo stato della modalità di manutenzione.
+  Modifiche:
+  
+- [main.py](./main.py): Script principale per l'avvio del bot e del monitoraggio.
+- [bot.py](bot.py): Contiene le funzioni per la gestione del bot Telegram.
+- [monitor.py](./monitor.py): Contiene le funzioni per il monitoraggio della connessione Ethernet.
+- [utils.py](./utils.py): Contiene funzioni di utilità generiche (invio messaggi, logging, ecc.).
+- [status.py](./status.py): Contiene lo stato della modalità di manutenzione.
 
 - Versione 6.0.1 : Bug Fix.
 - Versione 6.1 : Vengono mantenuti solo i file main e config per alcune problematiche. Inoltre, è stato aggiunto un allarme più invasivo nel caso in cui tutti i dispositivi siano disconnessi.
@@ -230,7 +234,11 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 6.14.4 : Inserito il conteggio di "Avvio dello script".
 - Versione 6.14.5 : Miglioramento dell'invio del log.
 
+### Versione 7
+
 - Versione 7.0 : Implementazione di un Database MySQL.
+  Novità : Adesso è presente un Database, chiamato NetworkAllarm, che gestisce i dispositivi e lo stato di Maintenence.
+  Tutti i dispositivi presenti nella variabile indirizzi_ping del file [config.py](./config.py) vengono importati nel database all'avvio dello script.
 
 ---
 
