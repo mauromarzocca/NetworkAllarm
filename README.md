@@ -183,14 +183,14 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Creazione del container Docker.
 - Bug Fix continuo.
 - Versione Inglese.
-- Inserimento dei dispositivi da monitorare tramite bot.
-- Utilizzo di un database invece che file testuali.
+- Gestione dei dispositivi da monitorare tramite bot.
 
 ### Già Implementati
 
 - ~~Miglioramento delle notifiche nel caso in cui tutti i dispositivi non rispondono.~~ (Risolto nella Build 6.0.1)
 - ~~Ping dal Bot~~ (Introdotto nella Build 6.5 con lo Stato Connessione)
 - ~~Maintenence Mode anche per dispositivi singoli.~~ (Implementato nella build 6.14)
+- ~~Utilizzo di un database~~. (Implementato nella build 7.0)
 
 ---
 
