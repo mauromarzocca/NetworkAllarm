@@ -11,12 +11,33 @@ import mysql.connector
 from config import DB_USER, DB_PASSWORD
 from mysql.connector import errorcode
 
-cnx = mysql.connector.connect(
-    user=DB_USER,
-    password=DB_PASSWORD,
-    host='localhost',
-    database='NetworkAllarm'
-)
+def create_database_if_not_exists():
+    """
+    Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
+    """
+    try:
+        # Connessione iniziale senza specificare il database
+        cnx = mysql.connector.connect(
+            user=config.DB_USER,
+            password=config.DB_PASSWORD,
+            host='localhost'
+        )
+        cursor = cnx.cursor()
+
+        # Creazione del database se non esiste
+        try:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.DB_NAME}")
+            print(f"Database {config.DB_NAME} creato o esistente.")
+        except mysql.connector.Error as err:
+            print(f"Errore durante la creazione del database: {err}")
+            exit(1)
+
+        cursor.close()
+        cnx.close()
+
+    except mysql.connector.Error as err:
+        print(f"Errore di connessione al server MySQL: {err}")
+        exit(1)
 
 def import_addresses(cursor):
     """
@@ -47,13 +68,21 @@ def renumber_ids(cursor):
         print(f"Errore durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
+    """
+    Crea la tabella monitor all'interno del database NetworkAllarm.
+    """
     try:
-        cnx = mysql.connector.connect(user=config.DB_USER, password=config.DB_PASSWORD, host='localhost', database='NetworkAllarm')
-        cursor = cnx.cursor()
+        # Prima assicurati che il database esista
+        create_database_if_not_exists()
 
-        # Creare il database se non esiste
-        cursor.execute("CREATE DATABASE IF NOT EXISTS NetworkAllarm")
-        cursor.execute("USE NetworkAllarm")
+        # Ora connetti al database specifico
+        cnx = mysql.connector.connect(
+            user=config.DB_USER,
+            password=config.DB_PASSWORD,
+            host='localhost',
+            database=config.DB_NAME
+        )
+        cursor = cnx.cursor()
 
         # Creare la tabella monitor se non esiste
         create_table_query = '''
@@ -79,13 +108,10 @@ def create_database_and_table():
         cnx.close()
 
     except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            print("Errore di accesso: nome utente o password errati")
-        elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            print("Il database specificato non esiste.")
-        else:
-            print(err)
+        print(f"Errore durante l'operazione sul database: {err}")
 
+# Esegui la funzione principale per creare il database e la tabella
+create_database_and_table()
 # Variabile globale per la modalità manutenzione
 dispositivi_in_manutenzione = set()
 modalita_manutenzione = False
@@ -96,9 +122,6 @@ allarme_attivo = False
 
 # Utilizza la cartella dei log definita in config.py
 log_file = os.path.join(cartella_log, nome_file)
-
-create_database_and_table()
-
 
 # Funzione per inviare un messaggio
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
