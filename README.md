@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.0.1
+Versione : 7.0.2
 
 ![logo](/img/logo.png)
 
@@ -240,6 +240,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
   Novità : Adesso è presente un Database, chiamato NetworkAllarm, che gestisce i dispositivi e lo stato di Maintenence.<br>
   Tutti i dispositivi presenti nella variabile indirizzi_ping del file [config.py](./config.py) vengono importati nel database all'avvio dello script.
 - Versione 7.0.1 : Bug Fix.
+- Versione 7.0.2 : Ottimizazzione del codice.
 
 ---
 
