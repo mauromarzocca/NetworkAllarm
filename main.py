@@ -7,7 +7,116 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import pytz
 import config
 from config import cartella_log, nome_file
+import mysql.connector
+from config import DB_USER, DB_PASSWORD
+from mysql.connector import errorcode
 
+DB_HOST = 'localhost'
+DB_NAME = config.DB_NAME
+DB_USER = config.DB_USER
+DB_PASSWORD = config.DB_PASSWORD
+
+def create_database_if_not_exists():
+    """
+    Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
+    """
+    try:
+        # Connessione iniziale senza specificare il database
+        cnx = mysql.connector.connect(
+            user=config.DB_USER,
+            password=config.DB_PASSWORD,
+            host='localhost'
+        )
+        cursor = cnx.cursor()
+
+        # Creazione del database se non esiste
+        try:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.DB_NAME}")
+            print(f"Database {config.DB_NAME} creato o esistente.")
+        except mysql.connector.Error as err:
+            print(f"Errore durante la creazione del database: {err}")
+            exit(1)
+
+        cursor.close()
+        cnx.close()
+
+    except mysql.connector.Error as err:
+        print(f"Errore di connessione al server MySQL: {err}")
+        exit(1)
+
+def import_addresses(cursor):
+    """
+    Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
+    Se un record esiste già, aggiorna il nome e l'indirizzo IP.
+    """
+    for indirizzo in config.indirizzi_ping:
+        try:
+            query = """
+            INSERT INTO monitor (Nome, IP) 
+            VALUES (%s, %s) 
+            ON DUPLICATE KEY UPDATE Nome = VALUES(Nome), IP = VALUES(IP)
+            """
+            cursor.execute(query, (indirizzo['nome'], indirizzo['indirizzo']))
+        except mysql.connector.Error as err:
+            print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
+
+def renumber_ids(cursor):
+    """
+    Rinumerare gli ID della tabella monitor per renderli sequenziali.
+    """
+    try:
+        cursor.execute("SET @count = 0;")
+        cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
+        cursor.execute("ALTER TABLE monitor AUTO_INCREMENT = 1;")
+        print("ID rinumerati con successo.")
+    except mysql.connector.Error as err:
+        print(f"Errore durante la rinumerazione degli ID: {err}")
+
+def create_database_and_table():
+    """
+    Crea la tabella monitor all'interno del database NetworkAllarm.
+    """
+    try:
+        # Prima assicurati che il database esista
+        create_database_if_not_exists()
+
+        # Ora connetti al database specifico
+        cnx = mysql.connector.connect(
+            user=config.DB_USER,
+            password=config.DB_PASSWORD,
+            host='localhost',
+            database=config.DB_NAME
+        )
+        cursor = cnx.cursor()
+
+        # Creare la tabella monitor se non esiste
+        create_table_query = '''
+        CREATE TABLE IF NOT EXISTS monitor (
+            ID INT AUTO_INCREMENT PRIMARY KEY,
+            Nome VARCHAR(255) NOT NULL,
+            IP VARCHAR(15) NOT NULL UNIQUE,
+            Maintenence BOOLEAN DEFAULT FALSE
+        ) AUTO_INCREMENT=1;
+        '''
+        cursor.execute(create_table_query)
+
+        # Importare indirizzi_ping nel database
+        import_addresses(cursor)
+
+        # Rinumerare gli ID per mantenerli sequenziali
+        renumber_ids(cursor)
+
+        cnx.commit()
+        print("Database e tabella monitor pronti all'uso.")
+
+        cursor.close()
+        cnx.close()
+
+    except mysql.connector.Error as err:
+        print(f"Errore durante l'operazione sul database: {err}")
+
+# Esegui la funzione principale per creare il database e la tabella
+create_database_and_table()
 # Variabile globale per la modalità manutenzione
 dispositivi_in_manutenzione = set()
 modalita_manutenzione = False
@@ -193,6 +302,15 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Aggiungi tutti i dispositivi alla lista di quelli in manutenzione
         dispositivi_in_manutenzione.update((nome_dispositivo, indirizzo_ip) for dispositivo in config.indirizzi_ping for nome_dispositivo, indirizzo_ip in [(dispositivo['nome'], dispositivo['indirizzo'])])
+        
+        # Aggiorna il valore di Maintenence nel database
+        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+        cursor = cnx.cursor()
+        query = ("UPDATE monitor SET Maintenence = TRUE")
+        cursor.execute(query)
+        cnx.commit()
+        cursor.close()
+        cnx.close()
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, dispositivi_in_manutenzione, allarme_attivo
@@ -206,6 +324,15 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Rimuovi tutti i dispositivi dalla lista di quelli in manutenzione
         dispositivi_in_manutenzione.clear()
+        
+        # Aggiorna il valore di Maintenence nel database
+        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+        cursor = cnx.cursor()
+        query = ("UPDATE monitor SET Maintenence = FALSE")
+        cursor.execute(query)
+        cnx.commit()
+        cursor.close()
+        cnx.close()
 
 async def aggiorna_messaggio_stato(chat_id):
     global messaggio_stato_id
@@ -313,6 +440,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
     
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
     if action == "off":
         # Esegui azioni per la manutenzione OFF
         messaggio = f"Manutenzione Disattiva su {nome_dispositivo} - {indirizzo_ip}"
@@ -320,6 +450,12 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
         await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
         scrivi_log(messaggio)
         dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))  # Rimuovi il dispositivo dalla lista di quelli in manutenzione
+
+        # Aggiorna il valore di Maintenence nel database
+        query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
+        cursor.execute(query, (indirizzo_ip,))
+        cnx.commit()
+
     elif action == "on":
         # Esegui azioni per la manutenzione ON
         messaggio = f"Manutenzione Attiva su {nome_dispositivo} - {indirizzo_ip}"
@@ -327,6 +463,14 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
         await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
         scrivi_log(messaggio)
         dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))  # Aggiungi il dispositivo alla lista di quelli in manutenzione
+
+        # Aggiorna il valore di Maintenence nel database
+        query = ("UPDATE monitor SET Maintenence = TRUE WHERE IP = %s")
+        cursor.execute(query, (indirizzo_ip,))
+        cnx.commit()
+
+    cursor.close()
+    cnx.close()
        
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dispositivi = config.indirizzi_ping
@@ -339,13 +483,25 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stati_connessioni = []
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
     for dispositivo in config.indirizzi_ping:
         nome_dispositivo = dispositivo['nome']
         indirizzo_ip = dispositivo['indirizzo']
+
+        query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
+        cursor.execute(query, (indirizzo_ip,))
+        result = cursor.fetchone()
+
+        stato_manutenzione = result[0] if result else False
         stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
-        manutenzione = "ON" if (nome_dispositivo, indirizzo_ip) in dispositivi_in_manutenzione else "OFF"
-        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato} - Manutenzione: {manutenzione}")
-    
+
+        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato} - Manutenzione: {stato_manutenzione}")
+
+    cursor.close()
+    cnx.close()
+
     messaggio = "\n".join(stati_connessioni)
     await invia_messaggio(messaggio, update.message.chat_id)
 

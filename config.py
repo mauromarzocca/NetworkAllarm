@@ -17,3 +17,8 @@ indirizzi_ping = [
     {'nome': 'Dispositivo1', 'indirizzo': '192.168.1.1'},
     {'nome': 'Dispositivo2', 'indirizzo': '192.168.1.2'},
 ]
+
+# Credenziali MySQL
+DB_USER = 'tuo_utente'
+DB_PASSWORD = 'tua_password'
+DB_NAME = 'NetworkAllarm'
