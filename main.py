@@ -117,9 +117,6 @@ def create_database_and_table():
 
 # Esegui la funzione principale per creare il database e la tabella
 create_database_and_table()
-# Variabile globale per la modalità manutenzione
-dispositivi_in_manutenzione = set()
-modalita_manutenzione = False
 # Variabile per l'ID del messaggio dinamico
 messaggio_stato_id = None
 # Variabile globale per lo stato dell'allarme
@@ -127,6 +124,32 @@ allarme_attivo = False
 
 # Utilizza la cartella dei log definita in config.py
 log_file = os.path.join(cartella_log, nome_file)
+
+def recupera_dispositivi_in_manutenzione():
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    query = ("SELECT Nome, IP FROM monitor WHERE Maintenence = TRUE")
+    cursor.execute(query)
+    result = cursor.fetchall()
+
+    dispositivi_in_manutenzione = set((nome, indirizzo) for nome, indirizzo in result)
+
+    cursor.close()
+    cnx.close()
+
+    return dispositivi_in_manutenzione
+
+def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    query = ("UPDATE monitor SET Maintenence = %s WHERE Nome = %s AND IP = %s")
+    cursor.execute(query, (in_manutenzione, nome, indirizzo))
+    cnx.commit()
+
+    cursor.close()
+    cnx.close()
 
 # Funzione per inviare un messaggio
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
@@ -300,15 +323,21 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await invia_messaggio("🔧 Inizio manutenzione", config.chat_id)
         await aggiorna_messaggio_stato(update.effective_chat.id)
         
-        # Aggiungi tutti i dispositivi alla lista di quelli in manutenzione
-        dispositivi_in_manutenzione.update((nome_dispositivo, indirizzo_ip) for dispositivo in config.indirizzi_ping for nome_dispositivo, indirizzo_ip in [(dispositivo['nome'], dispositivo['indirizzo'])])
-        
         # Aggiorna il valore di Maintenence nel database
         cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
         cursor = cnx.cursor()
         query = ("UPDATE monitor SET Maintenence = TRUE")
         cursor.execute(query)
         cnx.commit()
+        cursor.close()
+        cnx.close()
+        
+        # Recupera tutti i dispositivi dal database e aggiungili alla lista di quelli in manutenzione
+        cursor = cnx.cursor()
+        query = ("SELECT Nome, IP FROM monitor")
+        cursor.execute(query)
+        dispositivi = cursor.fetchall()
+        dispositivi_in_manutenzione.update((nome, indirizzo) for nome, indirizzo in dispositivi)
         cursor.close()
         cnx.close()
 
@@ -320,7 +349,6 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
         modalita_manutenzione = False
         scrivi_log("Fine manutenzione")
         await invia_messaggio("✅ Fine manutenzione", config.chat_id)
-        await aggiorna_messaggio_stato(update.effective_chat.id)
         
         # Rimuovi tutti i dispositivi dalla lista di quelli in manutenzione
         dispositivi_in_manutenzione.clear()
@@ -516,6 +544,21 @@ def main():
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione)$"), button_handler))
+
+    global dispositivi_in_manutenzione
+    dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
+
+    # Determina la modalità manutenzione dal database
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Maintenence FROM monitor")
+    cursor.execute(query)
+    results = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
+    global modalita_manutenzione
+    modalita_manutenzione = all(result[0] for result in results)
 
     async def monitoraggio():
         # La funzione principale di monitoraggio
