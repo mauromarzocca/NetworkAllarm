@@ -236,8 +236,8 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 
 ### Versione 7
 
-- Versione 7.0 : Implementazione di un Database MySQL.
-  Novità : Adesso è presente un Database, chiamato NetworkAllarm, che gestisce i dispositivi e lo stato di Maintenence.
+- Versione 7.0 : Implementazione di un Database MySQL.<br>
+  Novità : Adesso è presente un Database, chiamato NetworkAllarm, che gestisce i dispositivi e lo stato di Maintenence.<br>
   Tutti i dispositivi presenti nella variabile indirizzi_ping del file [config.py](./config.py) vengono importati nel database all'avvio dello script.
 
 ---
