@@ -3,7 +3,7 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
 from config import cartella_log, nome_file
@@ -410,10 +410,13 @@ def get_keyboard():
     ]
     button_list_row3 = [
         InlineKeyboardButton("🔧 Manutenzione", callback_data='manutenzione'),
-        InlineKeyboardButton("⚙️ Gestione", callback_data='gestione')
+        InlineKeyboardButton("⚙️ Aggiungi Dispositivo", callback_data='aggiungi_dispositivo')
     ]
-    
-    return InlineKeyboardMarkup([button_list_row1, button_list_row2, button_list_row3])
+    button_list_row4 = [
+        InlineKeyboardButton("🔧 Modifica Dispositivo", callback_data='modifica_dispositivo'),
+        InlineKeyboardButton("⚙️ Rimuovi Dispositivo", callback_data='rimuovi_dispositivo')
+    ]
+    return InlineKeyboardMarkup([button_list_row1, button_list_row2, button_list_row3, button_list_row4])
 
 def get_custom_keyboard():
     button_list = [
@@ -422,7 +425,10 @@ def get_custom_keyboard():
         KeyboardButton("📈 Stato Connessioni"),
         KeyboardButton("📝 Log Giornaliero"),
         KeyboardButton("🔧 Manutenzione"),
-        KeyboardButton("⚙️ Gestione")
+        KeyboardButton("⚙️ Aggiungi Dispositivo"),
+        KeyboardButton("⚙️ Modifica Dispositivo"),
+        KeyboardButton("⚙️ Rimuovi Dispositivo")
+
     ]
     
     return ReplyKeyboardMarkup([button_list[:2], button_list[2:4], button_list[4:]], resize_keyboard=True)
@@ -439,6 +445,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif query.data == 'log_giornaliero':
         await invia_log_giornaliero(update, context)
+    elif query.data == 'aggiungi_dispositivi':
+        await aggiungi_dispositivo(update, context)  
+    elif query.data == 'modifica_dispositivo':
+        await modifica_dispositivo(update, context)
+    elif query.data == 'rimuovi dispositivo':
+        await rimuovi_dispositivo(update, context)
     elif query.data.startswith("manutenzione_") and "_" not in query.data[13:]:
         nome_dispositivo = query.data.split("_")[1]
         # Recupera l'indirizzo IP del dispositivo selezionato
@@ -479,6 +491,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_log_giornaliero(update, context)
     elif text == "🔧 Manutenzione":
         await gestisci_manutenzione(update, context)
+    elif text == "⚙️ Aggiungi Dispositivo":
+        await aggiungi_dispositivo(update, context)
+    elif text == "⚙️ Modifica Dispositivo":
+        await modifica_dispositivo(update, context)
+    elif text == "⚙️ Rimuovi Dispositivo":
+        await rimuovi_dispositivo(update, context)
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
@@ -552,10 +570,17 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
-async def gestione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Codice per gestire la gestione
-    await invia_messaggio("Gestione...", update.effective_chat.id)
+async def aggiungi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Codice per aggiungere un dispositivo
+    pass
 
+async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Codice per rimuovere un dispositivo
+    pass
+
+async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Codice per modificare un dispositivo
+    pass
 
 def main():
     application = ApplicationBuilder().token(config.bot_token).build()
@@ -564,7 +589,10 @@ def main():
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione)$"), button_handler))
-    application.add_handler(CallbackQueryHandler(gestione, pattern='gestione'))
+
+    application.add_handler(CallbackQueryHandler(aggiungi_dispositivo, pattern='aggiungi_dispositivo'))
+    application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
+    application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
 
     global dispositivi_in_manutenzione
     dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
