@@ -428,10 +428,14 @@ def get_custom_keyboard():
         KeyboardButton("⚙️ Aggiungi Dispositivo"),
         KeyboardButton("⚙️ Modifica Dispositivo"),
         KeyboardButton("⚙️ Rimuovi Dispositivo")
-
     ]
     
-    return ReplyKeyboardMarkup([button_list[:2], button_list[2:4], button_list[4:]], resize_keyboard=True)
+    return ReplyKeyboardMarkup([
+        button_list[:2], 
+        button_list[2:4], 
+        button_list[4:6], 
+        button_list[6:]
+    ], resize_keyboard=True)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
