@@ -10,6 +10,7 @@ from config import cartella_log, nome_file
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import mysql.connector
+import ipaddress
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -449,7 +450,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif query.data == 'log_giornaliero':
         await invia_log_giornaliero(update, context)
-    elif query.data == 'aggiungi_dispositivi':
+    elif query.data == 'aggiungi_dispositivo':
         await aggiungi_dispositivo(update, context)  
     elif query.data == 'modifica_dispositivo':
         await modifica_dispositivo(update, context)
@@ -575,8 +576,42 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     await invia_log_corrente(chat_id)
 
 async def aggiungi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Codice per aggiungere un dispositivo
-    pass
+    chat_id = update.message.chat_id
+    await update.message.reply_text("Inserisci il nome del dispositivo:")
+
+    # Creare un MessageHandler per gestire la risposta dell'utente
+    message_handler = MessageHandler(filters.TEXT, aggiungi_dispositivo_nome)
+    application = ApplicationBuilder().token(config.bot_token).build()
+    application.add_handler(message_handler)
+
+async def aggiungi_dispositivo_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    nome_dispositivo = update.message.text
+    # Prosegui con la logica dell'aggiunta del dispositivo
+    await update.message.reply_text("Inserisci l'indirizzo IP del dispositivo:")
+    await context.bot.send_message(chat_id=config.chat_id, text="Indirizzo IP:")
+
+    # Wait for the user to respond with the IP address
+    indirizzo_ip = await context.bot.wait_for_message(chat_id=config.chat_id)
+
+    try:
+        ipaddress.IPv4Address(indirizzo_ip.text)
+    except ValueError:
+        await invia_messaggio("Errore: l'indirizzo IP inserito non è valido!", config.chat_id)
+        return
+
+    # Add the device to the database
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, FALSE)")
+    cursor.execute(query, (nome_dispositivo.text, indirizzo_ip.text))
+    cnx.commit()
+
+    cursor.close()
+    cnx.close()
+
+    # Send a confirmation message
+    await invia_messaggio(f"Dispositivo {nome_dispositivo.text} con indirizzo IP {indirizzo_ip.text} aggiunto con successo!", config.chat_id)
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Codice per rimuovere un dispositivo
@@ -592,7 +627,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione)$"), button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo)$"), button_handler))
 
     application.add_handler(CallbackQueryHandler(aggiungi_dispositivo, pattern='aggiungi_dispositivo'))
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
