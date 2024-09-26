@@ -411,7 +411,7 @@ def get_keyboard():
     ]
     button_list_row3 = [
         InlineKeyboardButton("🔧 Manutenzione", callback_data='manutenzione'),
-        InlineKeyboardButton("⚙️ Aggiungi Dispositivo", callback_data='aggiungi_dispositivo')
+        InlineKeyboardButton("⚙️ Aggiungi Dispositivo", callback_data='aggiungi_dispositivo_callback')
     ]
     button_list_row4 = [
         InlineKeyboardButton("🔧 Modifica Dispositivo", callback_data='modifica_dispositivo'),
@@ -450,8 +450,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await verifica_stato_connessioni(update, context)
     elif query.data == 'log_giornaliero':
         await invia_log_giornaliero(update, context)
-    elif query.data == 'aggiungi_dispositivo':
-        await aggiungi_dispositivo(update, context)  
+    elif query.data == 'aggiungi_dispositivo_callback':
+        await aggiungi_dispositivo_callback(update, context)  
     elif query.data == 'modifica_dispositivo':
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi dispositivo':
@@ -497,7 +497,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🔧 Manutenzione":
         await gestisci_manutenzione(update, context)
     elif text == "⚙️ Aggiungi Dispositivo":
-        await aggiungi_dispositivo(update, context)
+        await aggiungi_dispositivo_callback(update, context)
     elif text == "⚙️ Modifica Dispositivo":
         await modifica_dispositivo(update, context)
     elif text == "⚙️ Rimuovi Dispositivo":
@@ -575,43 +575,44 @@ async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.message.chat_id
     await invia_log_corrente(chat_id)
 
-async def aggiungi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-    await update.message.reply_text("Inserisci il nome del dispositivo:")
+async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
+    context.user_data['azione'] = 'aggiungi_dispositivo_nome'
 
-    # Creare un MessageHandler per gestire la risposta dell'utente
-    message_handler = MessageHandler(filters.TEXT, aggiungi_dispositivo_nome)
-    application = ApplicationBuilder().token(config.bot_token).build()
-    application.add_handler(message_handler)
-
-async def aggiungi_dispositivo_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    nome_dispositivo = update.message.text
-    # Prosegui con la logica dell'aggiunta del dispositivo
-    await update.message.reply_text("Inserisci l'indirizzo IP del dispositivo:")
-    await context.bot.send_message(chat_id=config.chat_id, text="Indirizzo IP:")
-
-    # Wait for the user to respond with the IP address
-    indirizzo_ip = await context.bot.wait_for_message(chat_id=config.chat_id)
-
-    try:
-        ipaddress.IPv4Address(indirizzo_ip.text)
-    except ValueError:
-        await invia_messaggio("Errore: l'indirizzo IP inserito non è valido!", config.chat_id)
-        return
-
-    # Add the device to the database
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
-    query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, FALSE)")
-    cursor.execute(query, (nome_dispositivo.text, indirizzo_ip.text))
-    cnx.commit()
-
-    cursor.close()
-    cnx.close()
-
-    # Send a confirmation message
-    await invia_messaggio(f"Dispositivo {nome_dispositivo.text} con indirizzo IP {indirizzo_ip.text} aggiunto con successo!", config.chat_id)
+async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    azione = context.user_data.get('azione')
+    if azione == 'aggiungi_dispositivo_nome':
+        nome_dispositivo = update.message.text
+        context.user_data['nome_dispositivo'] = nome_dispositivo
+        context.user_data['azione'] = 'aggiungi_dispositivo_indirizzo'
+        await invia_messaggio("Inserisci l'indirizzo IP del dispositivo (es. 192.168.1.100):", update.effective_chat.id)
+    elif azione == 'aggiungi_dispositivo_indirizzo':
+        indirizzo_ip = update.message.text
+        nome_dispositivo = context.user_data.get('nome_dispositivo')
+        
+        # Verifica se il dispositivo è già presente nel database
+        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+        cursor = cnx.cursor()
+        query = ("SELECT * FROM monitor WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (nome_dispositivo, indirizzo_ip))
+        result = cursor.fetchone()
+        cursor.close()
+        cnx.close()
+        
+        if result:
+            await invia_messaggio(f"Il dispositivo {nome_dispositivo} ({indirizzo_ip}) è già presente nel database.", update.effective_chat.id)
+        else:
+            # Aggiungi il dispositivo al database
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("INSERT INTO monitor (Nome, IP) VALUES (%s, %s)")
+            cursor.execute(query, (nome_dispositivo, indirizzo_ip))
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo!", update.effective_chat.id)
+        
+        context.user_data['azione'] = None
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Codice per rimuovere un dispositivo
@@ -629,7 +630,8 @@ def main():
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo)$"), button_handler))
 
-    application.add_handler(CallbackQueryHandler(aggiungi_dispositivo, pattern='aggiungi_dispositivo'))
+    application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
+    #application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='aggiungi_dispositivo'))
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
     application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
 
