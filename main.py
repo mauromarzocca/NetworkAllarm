@@ -194,9 +194,14 @@ async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
 def controlla_connessione(indirizzo):
     comando_ping = ['ping', '-c', '1', indirizzo]
     try:
-        subprocess.check_output(comando_ping)
+        output = subprocess.check_output(comando_ping, stderr=subprocess.STDOUT)
+        print(f"Ping riuscito per {indirizzo}:\n{output.decode()}")
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        print(f"Ping fallito per {indirizzo}:\n{e.output.decode()}")
+        return False
+    except Exception as e:
+        print(f"Errore durante il ping per {indirizzo}: {e}")
         return False
 
 # Funzione per scrivere l'orario e il tipo di evento in un file di log
@@ -552,24 +557,19 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
 
-    for dispositivo in config.indirizzi_ping:
-        nome_dispositivo = dispositivo['nome']
-        indirizzo_ip = dispositivo['indirizzo']
-
-        query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
-        cursor.execute(query, (indirizzo_ip,))
-        result = cursor.fetchone()
-
-        stato_manutenzione = result[0] if result else False
-        stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
-
-        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato} - Manutenzione: {stato_manutenzione}")
-
+    query = ("SELECT Nome, IP, Maintenence FROM monitor")
+    cursor.execute(query)
+    dispositivi = cursor.fetchall()
     cursor.close()
     cnx.close()
 
+    for nome_dispositivo, indirizzo_ip, stato_manutenzione in dispositivi:
+        print(f"Verifica connessione per {nome_dispositivo} ({indirizzo_ip})")
+        stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
+        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato} - Manutenzione: {stato_manutenzione}")
+
     messaggio = "\n".join(stati_connessioni)
-    await invia_messaggio(messaggio, update.message.chat_id)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio)
 
 async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -654,16 +654,24 @@ def main():
         # La funzione principale di monitoraggio
         scrivi_log("Avvio dello script")
         
-        stato_connessioni = {item['indirizzo']: True for item in config.indirizzi_ping}
         global allarme_attivo
 
         while True:
             if not modalita_manutenzione:
                 tutti_offline = True
 
-                for dispositivo in config.indirizzi_ping:
-                    nome_dispositivo = dispositivo['nome']
-                    indirizzo_ip = dispositivo['indirizzo']
+                # Recupera i dispositivi dal database
+                cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+                cursor = cnx.cursor()
+                query = ("SELECT Nome, IP FROM monitor")
+                cursor.execute(query)
+                dispositivi = cursor.fetchall()
+                cursor.close()
+                cnx.close()
+
+                stato_connessioni = {dispositivo[1]: True for dispositivo in dispositivi}
+
+                for nome_dispositivo, indirizzo_ip in dispositivi:
                     tentativi = 0
 
                     while tentativi < 3:
