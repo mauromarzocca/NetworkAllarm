@@ -459,34 +459,21 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await aggiungi_dispositivo_callback(update, context)  
     elif query.data == 'modifica_dispositivo':
         await modifica_dispositivo(update, context)
-    elif query.data == 'rimuovi dispositivo':
+    elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
-    elif query.data.startswith("manutenzione_") and "_" not in query.data[13:]:
-        nome_dispositivo = query.data.split("_")[1]
-        # Recupera l'indirizzo IP del dispositivo selezionato
-        indirizzo_ip = next((d['indirizzo'] for d in config.indirizzi_ping if d['nome'] == nome_dispositivo), None)
-        
-        # Invia il messaggio con l'indirizzo IP
-        if indirizzo_ip:
-            messaggio = f"{nome_dispositivo} con indirizzo {indirizzo_ip}"
-            await invia_messaggio(messaggio, update.callback_query.message.chat_id)
-            
+    elif query.data.startswith("manutenzione_"):
+        parts = query.data.split("_")
+        if len(parts) == 3:
+            _, nome_dispositivo, indirizzo_ip = parts
             # Aggiungi i bottoni per la manutenzione
             keyboard = [
                 [InlineKeyboardButton("Manutenzione ON", callback_data=f"manutenzione_on_{nome_dispositivo}_{indirizzo_ip}"),
                  InlineKeyboardButton("Manutenzione OFF", callback_data=f"manutenzione_off_{nome_dispositivo}_{indirizzo_ip}")],
             ]
             await invia_messaggio("Seleziona l'azione da eseguire:", update.callback_query.message.chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            await invia_messaggio(f"Errore: dispositivo {nome_dispositivo} non trovato", update.callback_query.message.chat_id)
-    elif query.data.startswith("manutenzione_") and "_" in query.data[13:]:
-        data = query.data.split("_")
-        action = data[1]
-        nome_dispositivo = data[2]
-        indirizzo_ip = data[3]
-        
-        # Chiamata alla funzione manutenzione con i dati estratti
-        await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
+        elif len(parts) == 4:
+            action, nome_dispositivo, indirizzo_ip = parts[1:]
+            await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -544,11 +531,18 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
     cnx.close()
        
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    dispositivi = config.indirizzi_ping
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Nome, IP FROM monitor")
+    cursor.execute(query)
+    dispositivi = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
     pulsanti = []
-    for dispositivo in dispositivi:
-        pulsanti.append(InlineKeyboardButton(dispositivo['nome'], callback_data=f"manutenzione_{dispositivo['nome']}"))
-    
+    for nome_dispositivo, indirizzo_ip in dispositivi:
+        pulsanti.append(InlineKeyboardButton(nome_dispositivo, callback_data=f"manutenzione_{nome_dispositivo}_{indirizzo_ip}"))
+
     keyboard = InlineKeyboardMarkup([pulsanti])
     await invia_messaggio("Dove vuoi gestire la manutenzione?", update.message.chat_id, reply_markup=keyboard)
 
