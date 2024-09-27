@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.0.2
+Versione : 7.1.1
 
 ![logo](/img/logo.png)
 
@@ -246,6 +246,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.0.1 : Bug Fix.
 - Versione 7.0.2 : Ottimizazzione del codice.
 - Versione 7.1 : Aggiunta funzione di "Aggiunta Dispositivo"
+- Versione 7.1.1 : Miglioramento generale del codice.
 
 <!-- markdownlint-enable MD033 -->
 
