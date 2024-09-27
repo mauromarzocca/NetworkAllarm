@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.1.1
+Versione : 7.1.2
 
 ![logo](/img/logo.png)
 
@@ -245,8 +245,9 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
   Tutti i dispositivi presenti nella variabile indirizzi_ping del file [config.py](./config.py) vengono importati nel database all'avvio dello script.
 - Versione 7.0.1 : Bug Fix.
 - Versione 7.0.2 : Ottimizazzione del codice.
-- Versione 7.1 : Aggiunta funzione di "Aggiunta Dispositivo"
+- Versione 7.1 : Aggiunta funzione di "Aggiunta Dispositivo".
 - Versione 7.1.1 : Miglioramento generale del codice.
+- Versione 7.1.2 : Miglioramento della migrazione dal file config.py al DB.
 
 <!-- markdownlint-enable MD033 -->
 
