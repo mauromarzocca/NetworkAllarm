@@ -480,6 +480,33 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
+    elif query.data.startswith("rimuovi_"):
+        parts = query.data.split("_")
+        nome_dispositivo = parts[1]
+        indirizzo_ip = parts[2]
+
+        # Crea un elenco di pulsanti per confermare o annullare la rimozione
+        pulsanti = [
+            [InlineKeyboardButton("Sì, rimuovi", callback_data=f"conferma_rimozione_{nome_dispositivo}_{indirizzo_ip}"),
+             InlineKeyboardButton("No, annulla", callback_data=f"annulla_rimozione_{nome_dispositivo}_{indirizzo_ip}")],
+        ]
+
+        # Crea la tastiera con i pulsanti
+        keyboard = InlineKeyboardMarkup(pulsanti)
+
+        # Invia il messaggio con la tastiera
+        await invia_messaggio(f"Sei sicuro di voler rimuovere il dispositivo {nome_dispositivo} ({indirizzo_ip})?", chat_id, reply_markup=keyboard)
+    elif query.data.startswith("conferma_rimozione_"):
+        parts = query.data.split("_")
+        nome_dispositivo = parts[2]
+        indirizzo_ip = parts[3]
+        await cancella_dispositivo_async(nome_dispositivo, indirizzo_ip)
+        await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", chat_id)
+    elif query.data.startswith("annulla_rimozione_"):
+        parts = query.data.split("_")
+        nome_dispositivo = parts[2]
+        indirizzo_ip = parts[3]
+        await invia_messaggio(f"Rimozione del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", chat_id)
     # Gestione delle azioni di manutenzione
     elif query.data.startswith("manutenzione_"):
         parts = query.data.split("_")
@@ -511,20 +538,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cnx.commit()
             cursor.close()
             cnx.close()
-
-            # Aggiungi il dispositivo alla variabile dispositivi_in_manutenzione
-            global dispositivi_in_manutenzione
-            dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))
-
-            scrivi_log(f"Aggiunto Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
-            await invia_messaggio("Dispositivo aggiunto con successo in stato di manutenzione.", chat_id)
-    
+            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo!", chat_id)
         else:
-            await invia_messaggio("Aggiunta del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", chat_id)
+            await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", chat_id)
 
-        context.user_data['azione'] = None
-        context.user_data['nome_dispositivo'] = None
-        context.user_data['indirizzo_ip'] = None
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -710,8 +727,46 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Codice per rimuovere un dispositivo
-    pass
+    chat_id = update.message.chat_id
+    await invia_messaggio("Quale dispositivo vuoi rimuovere?", chat_id)
+
+    # Recupera i dispositivi dal database
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Nome, IP FROM monitor")
+    cursor.execute(query)
+    dispositivi = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
+    # Crea un elenco di pulsanti con il nome del dispositivo
+    pulsanti = []
+    for dispositivo in dispositivi:
+        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"rimuovi_{dispositivo[0]}_{dispositivo[1]}"))
+
+    # Crea la tastiera con i pulsanti
+    keyboard = InlineKeyboardMarkup([pulsanti])
+
+    # Invia il messaggio con la tastiera
+    await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
+
+async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    query = ("DELETE FROM monitor WHERE Nome = %s AND IP = %s")
+    cursor.execute(query, (nome_dispositivo, indirizzo_ip))
+    cnx.commit()
+
+    cursor.close()
+    cnx.close()
+
+    # Rimuovi il dispositivo dalla lista di quelli in manutenzione
+    global dispositivi_in_manutenzione
+    dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))
+
+    scrivi_log(f"Rimosso Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
+    #await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", config.chat_id)
 
 async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Codice per modificare un dispositivo
@@ -723,8 +778,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo)$"), button_handler))
-
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo|⚙️ Rimuovi Dispositivo)$"), button_handler))
+    
     application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
     #application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='aggiungi_dispositivo'))
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
