@@ -595,9 +595,12 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     cnx.close()
 
     for nome_dispositivo, indirizzo_ip, stato_manutenzione in dispositivi:
-        print(f"Verifica connessione per {nome_dispositivo} ({indirizzo_ip})")
-        stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
-        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato} - Manutenzione: {stato_manutenzione}")
+        if stato_manutenzione:
+            stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : Manutenzione")
+        else:
+            print(f"Verifica connessione per {nome_dispositivo} ({indirizzo_ip})")
+            stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
+            stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato}")
 
     messaggio = "\n".join(stati_connessioni)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio)
