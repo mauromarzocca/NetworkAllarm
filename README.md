@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.0.2
+Versione : 7.3
 
 ![logo](/img/logo.png)
 
@@ -51,6 +51,7 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 
 ### 6.14
 
+<!-- markdownlint-disable MD033 -->
 <div align=center>
 
 ![preview](/img/6.14.5%20minor.png)
@@ -60,6 +61,7 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 ![preview](/img/6.14.5%20desktop.png)
 
 </div>
+<!-- markdownlint-enable MD033 -->
 
 ---
 
@@ -236,11 +238,20 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 
 ### Versione 7
 
+<!-- markdownlint-disable MD033 -->
+
 - Versione 7.0 : Implementazione di un Database MySQL.<br>
   Novità : Adesso è presente un Database, chiamato NetworkAllarm, che gestisce i dispositivi e lo stato di Maintenence.<br>
   Tutti i dispositivi presenti nella variabile indirizzi_ping del file [config.py](./config.py) vengono importati nel database all'avvio dello script.
 - Versione 7.0.1 : Bug Fix.
 - Versione 7.0.2 : Ottimizazzione del codice.
+- Versione 7.1 : Aggiunta funzione di "Aggiunta Dispositivo".
+- Versione 7.1.1 : Miglioramento generale del codice.
+- Versione 7.1.2 : Miglioramento della migrazione dal file config.py al DB.
+- Versione 7.2 : Aggiunta funzione di "Rimozione Dispositivo".
+- Versione 7.3 : Aggiunta funzione di "Modifica Dispositivo".
+
+<!-- markdownlint-enable MD033 -->
 
 ---
 
