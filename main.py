@@ -537,23 +537,25 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = query.data.split("_")
         conferma = parts[2]
         nome_dispositivo = parts[3]
-        indirizzo_ip = parts[4]
+        nuovo_indirizzo_ip = parts[4]
 
-        if conferma == 'si':
+        if conferma == "si":
             # Aggiungi il dispositivo al database in stato di manutenzione
             cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
             cursor = cnx.cursor()
             query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)")
-            cursor.execute(query, (nome_dispositivo, indirizzo_ip, True))
+            cursor.execute(query, (nome_dispositivo, nuovo_indirizzo_ip, True))
             cnx.commit()
             cursor.close()
             cnx.close()
-            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo!", chat_id)
-        else:
-            await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", chat_id)
 
+            # Aggiorna la variabile globale dispositivi_in_manutenzione
+            global dispositivi_in_manutenzione
+            dispositivi_in_manutenzione.add((nome_dispositivo, nuovo_indirizzo_ip))
 
-    
+            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) aggiunto con successo in stato di manutenzione!", update.effective_chat.id)
+        elif conferma == "no":
+            await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) annullata.", update.effective_chat.id)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -675,8 +677,6 @@ async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DE
     await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
     context.user_data['azione'] = 'aggiungi_dispositivo_nome'
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     azione = context.user_data.get('azione')
     if azione == 'aggiungi_dispositivo_nome':
@@ -720,7 +720,6 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await invia_messaggio(f"⚠️ Connessione fallita con {nome_dispositivo} ({indirizzo_ip}). Vuoi aggiungerlo comunque al database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
                 context.user_data['azione'] = None
-                scrivi_log(f"Aggiunto Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
                 return
 
             # Aggiungi il dispositivo al database
@@ -755,14 +754,11 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Richiedi il nuovo indirizzo IP del dispositivo
         await invia_messaggio("Inserisci il nuovo indirizzo IP del dispositivo (es. 192.168.1.100):", update.effective_chat.id)
-        context.user_data['azione'] = 'modifica_indirizzo_ip'
-        context.user_data['nome_dispositivo'] = nuovo_nome
-        context.user_data['indirizzo_ip'] = indirizzo_ip
-    elif azione == 'modifica_indirizzo_ip':
+        context.user_data['azione'] = 'modifica _indirizzo'
+    elif azione == 'modifica_indirizzo':
         nuovo_indirizzo_ip = update.message.text
         nome_dispositivo = context.user_data.get('nome_dispositivo')
-        indirizzo_ip = context.user_data.get('indirizzo_ip')
-        vecchio_nome = context.user_data.get('vecchio_nome')
+        vecchio_indirizzo_ip = context.user_data.get('indirizzo_ip')
 
         # Verifica se l'indirizzo IP è valido
         try:
@@ -771,22 +767,66 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await invia_messaggio("⚠️ Indirizzo IP non valido. Riprova.", update.effective_chat.id)
             return
 
-        # Aggiorna l'indirizzo IP del dispositivo nel database
+        # Verifica se il dispositivo è già presente nel database con il nuovo indirizzo IP
         cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
         cursor = cnx.cursor()
-        query = ("UPDATE monitor SET IP = %s WHERE Nome = %s")
-        cursor.execute(query, (nuovo_indirizzo_ip, nome_dispositivo))
+        query = ("SELECT * FROM monitor WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (nome_dispositivo, nuovo_indirizzo_ip))
+        result = cursor.fetchone()
+        cursor.close()
+        cnx.close()
+
+        if result:
+            await invia_messaggio(f"Il dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) è già presente nel database.", update.effective_chat.id)
+        else:
+            # Esegui un ping all'indirizzo IP
+            if controlla_connessione(nuovo_indirizzo_ip):
+                stato_manutenzione = False
+                await invia_messaggio(f"✅ Connessione riuscita con {nome_dispositivo} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
+            else:
+                stato_manutenzione = True
+                keyboard = [
+                    [InlineKeyboardButton("Sì", callback_data=f"conferma_aggiunta_si_{nome_dispositivo}_{nuovo_indirizzo_ip}"),
+                     InlineKeyboardButton("No", callback_data=f"conferma_aggiunta_no_{nome_dispositivo}_{nuovo_indirizzo_ip}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await invia_messaggio(f"⚠️ Connessione fallita con {nome_dispositivo} ({nuovo_indirizzo_ip}). Vuoi aggiungerlo comunque al database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
+                context.user_data['azione'] = None
+                return
+
+            # Aggiorna l'indirizzo IP del dispositivo nel database
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("UPDATE monitor SET IP = %s, Maintenence = %s WHERE Nome = %s AND IP = %s")
+            cursor.execute(query, (nuovo_indirizzo_ip, stato_manutenzione, nome_dispositivo, vecchio_indirizzo_ip))
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+
+            # Memorizza il vecchio indirizzo IP del dispositivo
+            context.user_data['vecchio_indirizzo_ip'] = vecchio_indirizzo_ip
+
+            scrivi_log(f"Aggiornato Dispositivo : {nome_dispositivo} - {nuovo_indirizzo_ip}")
+            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
+
+        context.user_data['azione'] = None
+    elif azione == 'elimina_dispositivo':
+        nome_dispositivo = context.user_data.get('nome_dispositivo')
+        indirizzo_ip = context.user_data.get('indirizzo_ip')
+
+        # Elimina il dispositivo dal database
+        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+        cursor = cnx.cursor()
+        query = ("DELETE FROM monitor WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (nome_dispositivo, indirizzo_ip))
         cnx.commit()
         cursor.close()
         cnx.close()
 
-        # Scrivi sul log il messaggio di modifica del dispositivo
-        scrivi_log(f"Dispositivo {vecchio_nome} - {indirizzo_ip} modificato in {nome_dispositivo} - {nuovo_indirizzo_ip}")
+        scrivi_log(f"Eliminato Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
+        await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) eliminato con successo!", update.effective_chat.id)
 
-        await invia_messaggio(f"Dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) modificato con successo!", update.effective_chat.id)
         context.user_data['azione'] = None
-    elif azione == 'conferma_aggiunta':
-        pass
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
