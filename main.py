@@ -192,6 +192,20 @@ async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
 
 # Funzione per controllare lo stato della connessione
 def controlla_connessione(indirizzo):
+    # Verifica se il dispositivo è in stato di manutenzione
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
+    cursor.execute(query, (indirizzo,))
+    stato_manutenzione = cursor.fetchone()
+    cursor.close()
+    cnx.close()
+
+    if stato_manutenzione and stato_manutenzione[0]:
+        print(f"Il dispositivo {indirizzo} è in stato di manutenzione, non effettuo il controllo di connessione.")
+        return True  # Ritorna True per indicare che il dispositivo è in stato di manutenzione
+
+    # Effettua il controllo di connessione
     comando_ping = ['ping', '-c', '1', indirizzo]
     try:
         output = subprocess.check_output(comando_ping, stderr=subprocess.STDOUT)
@@ -203,7 +217,7 @@ def controlla_connessione(indirizzo):
     except Exception as e:
         print(f"Errore durante il ping per {indirizzo}: {e}")
         return False
-
+    
 # Funzione per scrivere l'orario e il tipo di evento in un file di log
 def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     ora_evento = datetime.now().strftime('%H:%M:%S')
@@ -604,6 +618,25 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
 
     messaggio = "\n".join(stati_connessioni)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio)
+
+""" async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stati_connessioni = []
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    query = ("SELECT Nome, IP, Maintenence FROM monitor")
+    cursor.execute(query)
+    dispositivi = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
+    for nome_dispositivo, indirizzo_ip, stato_manutenzione in dispositivi:
+        print(f"Verifica connessione per {nome_dispositivo} ({indirizzo_ip})")
+        stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
+        stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato} - Manutenzione: {stato_manutenzione}")
+
+    messaggio = "\n".join(stati_connessioni)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio) """
 
 async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
