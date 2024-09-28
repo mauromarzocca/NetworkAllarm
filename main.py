@@ -498,8 +498,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.close()
             cnx.close()
 
+            # Aggiungi il dispositivo alla variabile dispositivi_in_manutenzione
+            global dispositivi_in_manutenzione
+            dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))
+
             scrivi_log(f"Aggiunto Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
             await invia_messaggio("Dispositivo aggiunto con successo in stato di manutenzione.", chat_id)
+    
         else:
             await invia_messaggio("Aggiunta del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", chat_id)
 
