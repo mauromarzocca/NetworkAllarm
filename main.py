@@ -556,6 +556,25 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await invia_messaggio(f"Dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) aggiunto con successo in stato di manutenzione!", update.effective_chat.id)
         elif conferma == "no":
             await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) annullata.", update.effective_chat.id)
+    
+    elif query.data.startswith("conferma_modifica_si_"):
+        parts = query.data.split("_")
+        nuovo_nome = parts[3]
+        nuovo_indirizzo_ip = parts[4]
+        vecchio_nome = parts[5]
+        vecchio_indirizzo_ip = parts[6]
+
+        # Aggiorna il dispositivo nel database
+        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+        cursor = cnx.cursor()
+        query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = TRUE WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, vecchio_nome, vecchio_indirizzo_ip))
+        cnx.commit()
+        cursor.close()
+        cnx.close()
+
+        scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
+        await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -782,7 +801,7 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             stato_manutenzione = True
             keyboard = [
-                [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nuovo_nome}_{nuovo_indirizzo_ip}"),
+                [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nuovo_nome}_{nuovo_indirizzo_ip}_{vecchio_nome}_{vecchio_indirizzo_ip}"),
                 InlineKeyboardButton("No", callback_data=f"conferma_modifica_no_{nuovo_nome}_{nuovo_indirizzo_ip}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
