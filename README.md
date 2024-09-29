@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.3
+Versione : 7.3.1
 
 ![logo](/img/logo.png)
 
@@ -250,6 +250,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.1.2 : Miglioramento della migrazione dal file config.py al DB.
 - Versione 7.2 : Aggiunta funzione di "Rimozione Dispositivo".
 - Versione 7.3 : Aggiunta funzione di "Modifica Dispositivo".
+- Versione 7.3.1 : Bug Fix nella funzione di "Modifica Dispositivo".
 
 <!-- markdownlint-enable MD033 -->
 
