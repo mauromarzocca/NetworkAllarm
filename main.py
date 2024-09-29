@@ -916,7 +916,7 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
         pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"rimuovi_{dispositivo[0]}_{dispositivo[1]}"))
 
     # Crea la tastiera con i pulsanti
-    keyboard = InlineKeyboardMarkup([pulsanti])
+    keyboard = InlineKeyboardMarkup([pulsanti[i:i+2] for i in range(0, len(pulsanti), 2)])
 
     # Invia il messaggio con la tastiera
     await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
@@ -958,7 +958,7 @@ async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYP
         pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"modifica_{dispositivo[0]}_{dispositivo[1]}"))
 
     # Crea la tastiera con i pulsanti
-    keyboard = InlineKeyboardMarkup([pulsanti])
+    keyboard = InlineKeyboardMarkup([pulsanti[i:i+2] for i in range(0, len(pulsanti), 2)])
 
     # Invia il messaggio con la tastiera
     await invia_messaggio("Seleziona il dispositivo da modificare:", chat_id, reply_markup=keyboard)
