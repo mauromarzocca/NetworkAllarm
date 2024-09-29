@@ -742,18 +742,16 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nome_dispositivo = context.user_data.get('nome_dispositivo')
         indirizzo_ip = context.user_data.get('indirizzo_ip')
 
-        # Memorizza il nome originale del dispositivo
-        context.user_data['vecchio_nome'] = nome_dispositivo
-
-        # Richiedi il nuovo indirizzo IP del dispositivo
-        await invia_messaggio("Inserisci il nuovo indirizzo IP del dispositivo (es. 192.168.1.100):", update.effective_chat.id)
+        context.user_data['nuovo_nome'] = nuovo_nome
         context.user_data['azione'] = 'modifica_indirizzo_nome'
+
+        await invia_messaggio("Inserisci il nuovo indirizzo IP del dispositivo:", update.effective_chat.id)
 
     elif azione == 'modifica_indirizzo_nome':
         nuovo_indirizzo_ip = update.message.text
-        nome_dispositivo = context.user_data.get('nome_dispositivo')
+        vecchio_nome = context.user_data.get('nome_dispositivo')
         vecchio_indirizzo_ip = context.user_data.get('indirizzo_ip')
-        vecchio_nome = context.user_data.get('vecchio_nome')
+        nuovo_nome = context.user_data.get('nuovo_nome')
 
         # Verifica se l'indirizzo IP è valido
         try:
@@ -766,13 +764,13 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
         cursor = cnx.cursor()
         query = ("SELECT * FROM monitor WHERE IP = %s AND Nome != %s")
-        cursor.execute(query, (nuovo_indirizzo_ip, nome_dispositivo))
+        cursor.execute(query, (nuovo_indirizzo_ip, nuovo_nome))
         result = cursor.fetchone()
         cursor.close()
         cnx.close()
 
         if result:
-            await invia_messaggio(f"Il dispositivo con l'indirizzo IP {nuovo_indirizzo_ip} è già presente nel database. Impossibile aggiornare l'indirizzo.", update.effective_chat.id)
+            await invia_messaggio(f"Il dispositivo con l'indirizzo IP {nuovo_indirizzo_ip} è già presente nel database.", update.effective_chat.id)
             context.user_data['nome_dispositivo'] = vecchio_nome
             context.user_data['azione'] = None
             return
@@ -780,15 +778,15 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Esegui un ping all'indirizzo IP
         if controlla_connessione(nuovo_indirizzo_ip):
             stato_manutenzione = False
-            await invia_messaggio(f"✅ Connessione riuscita con {nome_dispositivo} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
+            await invia_messaggio(f"✅ Connessione riuscita con {nuovo_nome} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
         else:
             stato_manutenzione = True
             keyboard = [
-                [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nome_dispositivo}_{nuovo_indirizzo_ip}"),
-                InlineKeyboardButton("No", callback_data=f"conferma_modifica_no_{nome_dispositivo}_{nuovo_indirizzo_ip}")]
+                [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nuovo_nome}_{nuovo_indirizzo_ip}"),
+                InlineKeyboardButton("No", callback_data=f"conferma_modifica_no_{nuovo_nome}_{nuovo_indirizzo_ip}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await invia_messaggio(f"⚠️ Connessione fallita con {nome_dispositivo} ({nuovo_indirizzo_ip}). Vuoi aggiornare il database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
+            await invia_messaggio(f"⚠️ Connessione fallita con {nuovo_nome} ({nuovo_indirizzo_ip}). Vuoi aggiornare il database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
             context.user_data['azione'] = None
             return
 
@@ -796,14 +794,15 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
         cursor = cnx.cursor()
         query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = %s WHERE Nome = %s AND IP = %s")
-        cursor.execute(query, (nome_dispositivo, nuovo_indirizzo_ip, stato_manutenzione, vecchio_nome, vecchio_indirizzo_ip))
+        cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, stato_manutenzione, vecchio_nome, vecchio_indirizzo_ip))
         cnx.commit()
         cursor.close()
         cnx.close()
 
-        scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nome_dispositivo} - {nuovo_indirizzo_ip}")
-        await invia_messaggio(f"Dispositivo {vecchio_nome} ({vecchio_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
+        scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
+        await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
 
+        context.user_data['nome_dispositivo'] = nuovo_nome
         context.user_data['azione'] = None
 
         """ 
@@ -944,6 +943,20 @@ async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Invia il messaggio con la tastiera
     await invia_messaggio("Seleziona il dispositivo da modificare:", chat_id, reply_markup=keyboard)
+
+async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    query = ("UPDATE monitor SET Nome = %s WHERE Nome = %s AND IP = %s")
+    cursor.execute(query, (nome_nuovo, nome_vecchio, indirizzo_ip))
+    cnx.commit()
+
+    cursor.close()
+    cnx.close()
+
+    scrivi_log(f"Modificato Dispositivo : {nome_vecchio} - {indirizzo_ip} -> {nome_nuovo} - {indirizzo_ip}")
+    await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
 def main():
     application = ApplicationBuilder().token(config.bot_token).build()
