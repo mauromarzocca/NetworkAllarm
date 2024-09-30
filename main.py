@@ -447,14 +447,16 @@ def get_custom_keyboard():
         KeyboardButton("🔧 Manutenzione"),
         KeyboardButton("⚙️ Aggiungi Dispositivo"),
         KeyboardButton("⚙️ Modifica Dispositivo"),
-        KeyboardButton("⚙️ Rimuovi Dispositivo")
+        KeyboardButton("⚙️ Rimuovi Dispositivo"),
+        KeyboardButton("/start")  # Aggiungi questo pulsante
     ]
     
     return ReplyKeyboardMarkup([
         button_list[:2], 
         button_list[2:4], 
         button_list[4:6], 
-        button_list[6:]
+        button_list[6:8],
+        [button_list[8]]  # Aggiungi il pulsante /start in una nuova riga
     ], resize_keyboard=True)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -595,6 +597,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif text == "⚙️ Rimuovi Dispositivo":
         await rimuovi_dispositivo(update, context)
+    elif text == "/start":
+        await start(update, context)
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
