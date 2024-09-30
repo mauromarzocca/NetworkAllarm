@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.3.1
+Versione : 7.4
 
 ![logo](/img/logo.png)
 
@@ -251,6 +251,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.2 : Aggiunta funzione di "Rimozione Dispositivo".
 - Versione 7.3 : Aggiunta funzione di "Modifica Dispositivo".
 - Versione 7.3.1 : Bug Fix nella funzione di "Modifica Dispositivo".
+- Versione 7.4 : Migliorata la UI.
 
 <!-- markdownlint-enable MD033 -->
 
