@@ -764,50 +764,67 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await invia_messaggio("⚠️ Indirizzo IP non valido. Riprova.", update.effective_chat.id)
             return
 
-        # Verifica se l'indirizzo IP è già presente nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("SELECT * FROM monitor WHERE IP = %s AND Nome != %s")
-        cursor.execute(query, (nuovo_indirizzo_ip, nuovo_nome))
-        result = cursor.fetchone()
-        cursor.close()
-        cnx.close()
+        # Verifica se l'indirizzo IP è lo stesso di quello già presente
+        if nuovo_indirizzo_ip == vecchio_indirizzo_ip:
+            # Aggiorna il dispositivo nel database
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("UPDATE monitor SET Nome = %s WHERE Nome = %s AND IP = %s")
+            cursor.execute(query, (nuovo_nome, vecchio_nome, vecchio_indirizzo_ip))
+            cnx.commit()
+            cursor.close()
+            cnx.close()
 
-        if result:
-            await invia_messaggio(f"Il dispositivo con l'indirizzo IP {nuovo_indirizzo_ip} è già presente nel database.", update.effective_chat.id)
-            context.user_data['nome_dispositivo'] = vecchio_nome
+            scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {vecchio_indirizzo_ip}")
+            await invia_messaggio(f"Dispositivo {nuovo_nome} ({vecchio_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
+
+            context.user_data['nome_dispositivo'] = nuovo_nome
             context.user_data['azione'] = None
-            return
-
-        # Esegui un ping all'indirizzo IP
-        if controlla_connessione(nuovo_indirizzo_ip):
-            stato_manutenzione = False
-            await invia_messaggio(f"✅ Connessione riuscita con {nuovo_nome} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
         else:
-            stato_manutenzione = True
-            keyboard = [
-                [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nuovo_nome}_{nuovo_indirizzo_ip}_{vecchio_nome}_{vecchio_indirizzo_ip}"),
-                InlineKeyboardButton("No", callback_data=f"conferma_modifica_no_{nuovo_nome}_{nuovo_indirizzo_ip}")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await invia_messaggio(f"⚠️ Connessione fallita con {nuovo_nome} ({nuovo_indirizzo_ip}). Vuoi aggiornare il database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
+            # Verifica se l'indirizzo IP è già presente nel database
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("SELECT * FROM monitor WHERE IP = %s")
+            cursor.execute(query, (nuovo_indirizzo_ip,))
+            result = cursor.fetchone()
+            cursor.close()
+            cnx.close()
+
+            if result and result[0] != nuovo_nome:
+                await invia_messaggio(f"Il dispositivo con l'indirizzo IP {nuovo_indirizzo_ip} è già presente nel database.", update.effective_chat.id)
+                context.user_data['nome_dispositivo'] = vecchio_nome
+                context.user_data['azione'] = None
+                return
+
+            # Esegui un ping all'indirizzo IP
+            if controlla_connessione(nuovo_indirizzo_ip):
+                stato_manutenzione = False
+                await invia_messaggio(f"✅ Connessione riuscita con {nuovo_nome} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
+            else:
+                stato_manutenzione = True
+                keyboard = [
+                    [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nuovo_nome}_{nuovo_indirizzo_ip}_{vecchio_nome}_{vecchio_indirizzo_ip}"),
+                    InlineKeyboardButton("No", callback_data=f"conferma_modifica_no_{nuovo_nome}_{nuovo_indirizzo_ip}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await invia_messaggio(f"⚠️ Connessione fallita con {nuovo_nome} ({nuovo_indirizzo_ip}). Vuoi aggiornare il database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
+                context.user_data['azione'] = None
+                return
+
+            # Aggiorna il dispositivo nel database
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = %s WHERE Nome = %s AND IP = %s")
+            cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, stato_manutenzione, vecchio_nome, vecchio_indirizzo_ip))
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+
+            scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
+            await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
+
+            context.user_data['nome_dispositivo'] = nuovo_nome
             context.user_data['azione'] = None
-            return
-
-        # Aggiorna il dispositivo nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = %s WHERE Nome = %s AND IP = %s")
-        cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, stato_manutenzione, vecchio_nome, vecchio_indirizzo_ip))
-        cnx.commit()
-        cursor.close()
-        cnx.close()
-
-        scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
-        await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
-
-        context.user_data['nome_dispositivo'] = nuovo_nome
-        context.user_data['azione'] = None
 
     elif azione == 'elimina_dispositivo':
         nome_dispositivo = context.user_data.get('nome_dispositivo')
