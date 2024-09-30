@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.3.1
+Versione : 7.4.1
 
 ![logo](/img/logo.png)
 
@@ -185,7 +185,6 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Creazione del container Docker.
 - Bug Fix continuo.
 - Versione Inglese.
-- Gestione dei dispositivi da monitorare tramite bot.
 
 ### Già Implementati
 
@@ -193,6 +192,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - ~~Ping dal Bot~~ (Introdotto nella Build 6.5 con lo Stato Connessione)
 - ~~Maintenence Mode anche per dispositivi singoli.~~ (Implementato nella build 6.14)
 - ~~Utilizzo di un database~~. (Implementato nella build 7.0)
+- ~~Gestione dei dispositivi da monitorare tramite bot.~~ (Implementato nella Build 7.3)
 
 ---
 
@@ -251,6 +251,8 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.2 : Aggiunta funzione di "Rimozione Dispositivo".
 - Versione 7.3 : Aggiunta funzione di "Modifica Dispositivo".
 - Versione 7.3.1 : Bug Fix nella funzione di "Modifica Dispositivo".
+- Versione 7.4 : Migliorata la UI.
+- Versione 7.4.1 : Bug Fix.
 
 <!-- markdownlint-enable MD033 -->
 
