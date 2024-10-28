@@ -1031,9 +1031,9 @@ def main():
                     allarme_attivo = False
 
                 # Invia una notifica ogni 60 secondi se l'allarme è attivo.
-                if allarme_attivo:
-                    await invia_messaggio("⚠️ Avviso: Tutti i dispositivi sono offline!", config.chat_id)
-                    await asyncio.sleep(60)
+                #if allarme_attivo:
+                #    await invia_messaggio("⚠️ Avviso: Tutti i dispositivi sono offline!", config.chat_id)
+                #    await asyncio.sleep(60)
 
                 # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
                 if allarme_attivo and not dispositivi_in_manutenzione:
