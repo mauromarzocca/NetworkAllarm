@@ -973,24 +973,34 @@ def main():
 
                 stato_connessioni = {dispositivo[1]: True for dispositivo in dispositivi}
 
+                # Inizializza un dizionario per tenere traccia dello stato precedente delle connessioni
+                stato_connessioni_precedente = {dispositivo[1]: False for dispositivo in dispositivi}
+
                 for nome_dispositivo, indirizzo_ip in dispositivi:
                     tentativi = 0
 
                     while tentativi < 3:
                         connessione_attuale = controlla_connessione(indirizzo_ip)
-                        
+
                         if connessione_attuale:
-                            if not stato_connessioni[indirizzo_ip]:
+                            # Controlla se il dispositivo era precedentemente offline
+                            if not stato_connessioni_precedente[indirizzo_ip]:
                                 if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                                     await invia_messaggio(
-                                        f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}).",
-                                        config.chat_id)
-                                    scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
+                                        f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                        config.chat_id
+                                    )
+                                    scrivi_log(f"Connessione ripristinata: {nome_dispositivo} - {indirizzo_ip}")
                                 stato_connessioni[indirizzo_ip] = True
+                                stato_connessioni_precedente[indirizzo_ip] = True  # Aggiorna lo stato precedente
                             break
                         else:
                             tentativi += 1
                             await asyncio.sleep(30)
+
+                    # Se il dispositivo è offline, aggiorna lo stato precedente
+                    if not connessione_attuale:
+                        stato_connessioni_precedente[indirizzo_ip] = False
 
                     if not connessione_attuale and stato_connessioni[indirizzo_ip] and (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                         await invia_messaggio(
