@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.4.1
+Versione : 7.4.2
 
 ![logo](/img/logo.png)
 
@@ -253,6 +253,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.3.1 : Bug Fix nella funzione di "Modifica Dispositivo".
 - Versione 7.4 : Migliorata la UI.
 - Versione 7.4.1 : Bug Fix.
+- Versione 7.4.2 : Ottimizzazione del codice.
 
 <!-- markdownlint-enable MD033 -->
 
