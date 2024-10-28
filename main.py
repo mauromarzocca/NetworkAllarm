@@ -933,7 +933,6 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo|⚙️ Rimuovi Dispositivo|⚙️ Modifica Dispositivo)$"), button_handler))
     
     application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
-    #application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='aggiungi_dispositivo'))
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
     application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
 
@@ -953,11 +952,10 @@ def main():
     modalita_manutenzione = all(result[0] for result in results)
 
     async def monitoraggio():
-    # La funzione principale di monitoraggio
         scrivi_log("Avvio dello script")
 
         global allarme_attivo
-        stato_precedente_connessioni = {}  # Inizializza qui
+        stato_precedente_connessioni = {}  # Dizionario per tenere traccia dello stato precedente
 
         while True:
             if not modalita_manutenzione:
@@ -995,14 +993,14 @@ def main():
                             await asyncio.sleep(30)
 
                     if not connessione_attuale:
+                        # Controlla se il dispositivo era online prima
                         if stato_precedente is not None and stato_precedente:  # Solo se era online prima
+                            print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                             await invia_messaggio(
                                 f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
                                 config.chat_id)
                             scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                         stato_precedente_connessioni[indirizzo_ip] = False  # Aggiorna lo stato attuale come offline
-
-            # ...
 
                     if not connessione_attuale and stato_precedente and (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                         await invia_messaggio(
