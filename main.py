@@ -953,10 +953,11 @@ def main():
     modalita_manutenzione = all(result[0] for result in results)
 
     async def monitoraggio():
-        # La funzione principale di monitoraggio
+    # La funzione principale di monitoraggio
         scrivi_log("Avvio dello script")
-        
+
         global allarme_attivo
+        stato_precedente_connessioni = {}  # Inizializza qui
 
         while True:
             if not modalita_manutenzione:
@@ -971,43 +972,44 @@ def main():
                 cursor.close()
                 cnx.close()
 
-                stato_connessioni = {dispositivo[1]: True for dispositivo in dispositivi}
-
-                # Inizializza un dizionario per tenere traccia dello stato precedente delle connessioni
-                stato_connessioni_precedente = {dispositivo[1]: False for dispositivo in dispositivi}
-
                 for nome_dispositivo, indirizzo_ip in dispositivi:
                     tentativi = 0
 
                     while tentativi < 3:
                         connessione_attuale = controlla_connessione(indirizzo_ip)
 
+                        # Controlla se lo stato precedente era offline
+                        stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)  # Usa None come default
+
                         if connessione_attuale:
-                            # Controlla se il dispositivo era precedentemente offline
-                            if not stato_connessioni_precedente[indirizzo_ip]:
+                            if stato_precedente is False:  # Se prima era offline e ora è online
                                 if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                                     await invia_messaggio(
                                         f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}). ",
-                                        config.chat_id
-                                    )
-                                    scrivi_log(f"Connessione ripristinata: {nome_dispositivo} - {indirizzo_ip}")
-                                stato_connessioni[indirizzo_ip] = True
-                                stato_connessioni_precedente[indirizzo_ip] = True  # Aggiorna lo stato precedente
+                                        config.chat_id)
+                                    scrivi_log("Connessione ripristinata", nome_dispositivo, indirizzo_ip)
+                            stato_precedente_connessioni[indirizzo_ip] = True  # Aggiorna lo stato attuale
                             break
                         else:
                             tentativi += 1
                             await asyncio.sleep(30)
 
-                    # Se il dispositivo è offline, aggiorna lo stato precedente
                     if not connessione_attuale:
-                        stato_connessioni_precedente[indirizzo_ip] = False
+                        if stato_precedente is not None and stato_precedente:  # Solo se era online prima
+                            await invia_messaggio(
+                                f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                config.chat_id)
+                            scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                        stato_precedente_connessioni[indirizzo_ip] = False  # Aggiorna lo stato attuale come offline
 
-                    if not connessione_attuale and stato_connessioni[indirizzo_ip] and (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
+            # ...
+
+                    if not connessione_attuale and stato_precedente and (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                         await invia_messaggio(
-                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}).",
+                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
                             config.chat_id)
                         scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                        stato_connessioni[indirizzo_ip] = False
+                        stato_precedente_connessioni[indirizzo_ip] = False  # Aggiorna lo stato attuale come offline
 
                     # Se almeno un dispositivo è online, non attiviamo l'allarme.
                     if connessione_attuale:
