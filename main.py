@@ -988,6 +988,7 @@ def main():
                                         f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}). ",
                                         config.chat_id
                                     )
+                                    scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
                                 # Rimuovi la notifica di offline se era stata inviata
                                 notifiche_inviate.pop(indirizzo_ip, None)
                             stato_precedente_connessioni[indirizzo_ip] = True
