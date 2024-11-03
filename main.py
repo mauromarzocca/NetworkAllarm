@@ -925,6 +925,9 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
 def main():
+
+    scrivi_log("Avvio dello script")
+
     application = ApplicationBuilder().token(config.bot_token).build()
     
     application.add_handler(CommandHandler("start", start))
