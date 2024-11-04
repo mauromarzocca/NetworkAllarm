@@ -925,6 +925,9 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
 def main():
+
+    scrivi_log("Avvio dello script")
+
     application = ApplicationBuilder().token(config.bot_token).build()
     
     application.add_handler(CommandHandler("start", start))
@@ -985,6 +988,7 @@ def main():
                                         f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}). ",
                                         config.chat_id
                                     )
+                                    scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
                                 # Rimuovi la notifica di offline se era stata inviata
                                 notifiche_inviate.pop(indirizzo_ip, None)
                             stato_precedente_connessioni[indirizzo_ip] = True
