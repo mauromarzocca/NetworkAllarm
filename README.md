@@ -131,7 +131,7 @@ crontab -e
 ```
 
 ```sh
-5 0 * * * /usr/bin/python3 /path/to/check_log.py
+5 0 * * * /usr/bin/python3 /path/check_log.py
 ```
 
 In questo caso, eseguo il check alle ore 0.05.
@@ -153,7 +153,7 @@ crontab -e
 ```
 
 ```sh
-0 10 15 * * /usr/bin/python3 /percorso/del/tuo/script.py
+0 10 15 * * /usr/bin/python3 /path/archive_log.py
 ```
 
 ### NB
