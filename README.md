@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.4.2
+Versione : 7.5
 
 ![logo](/img/logo.png)
 
@@ -14,6 +14,7 @@ Versione : 7.4.2
     - [6.14](#614)
   - [Installazione](#installazione)
   - [Configurazione](#configurazione)
+    - [Script di controllo](#script-di-controllo)
     - [NB](#nb)
   - [Utilizzo](#utilizzo)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
@@ -112,6 +113,23 @@ DB_PASSWORD = 'tua_password'
 DB_NAME = 'NetworkAllarm'
 
 ```
+
+### Script di controllo
+
+Lo script di controllo [Check Log](check_log.py) verifica se il file log è stato generato, in caso negativo, forza la sua creazione.
+Per gestire ottimamente lo script occorre dargli i permessi di esecuzione tramite:
+
+```sh
+chmod +x /path/to/check_log.py
+```
+
+E poi eseguirlo periodicamente tramite un crontab:
+
+```sh
+5 0 * * * /usr/bin/python3 /path/to/check_log.py
+```
+
+In questo caso, eseguo il check alle ore 0.05.
 
 ### NB
 
@@ -254,6 +272,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.4 : Migliorata la UI.
 - Versione 7.4.1 : Bug Fix.
 - Versione 7.4.2 : Ottimizzazione del codice.
+- Versione 7.5 : Creazione di uno script di controllo per il file log.
 
 <!-- markdownlint-enable MD033 -->
 
