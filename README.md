@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.5.1
+Versione : 7.6
 
 ![logo](/img/logo.png)
 
@@ -14,7 +14,8 @@ Versione : 7.5.1
     - [6.14](#614)
   - [Installazione](#installazione)
   - [Configurazione](#configurazione)
-    - [Script di controllo](#script-di-controllo)
+    - [Script di controllo 'Creazione Log'](#script-di-controllo-creazione-log)
+    - [Script di Archiviazione dei Log](#script-di-archiviazione-dei-log)
     - [NB](#nb)
   - [Utilizzo](#utilizzo)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
@@ -114,22 +115,46 @@ DB_NAME = 'NetworkAllarm'
 
 ```
 
-### Script di controllo
+### Script di controllo 'Creazione Log'
 
 Lo script di controllo [Check Log](check_log.py) verifica se il file log è stato generato, in caso negativo, forza la sua creazione.
 Per gestire ottimamente lo script occorre dargli i permessi di esecuzione tramite:
 
 ```sh
-chmod +x /path/to/check_log.py
+chmod +x /path/check_log.py
 ```
 
 E poi eseguirlo periodicamente tramite un crontab:
+
+```sh
+crontab -e
+```
 
 ```sh
 5 0 * * * /usr/bin/python3 /path/to/check_log.py
 ```
 
 In questo caso, eseguo il check alle ore 0.05.
+
+### Script di Archiviazione dei Log
+
+Lo scrip di archiviazione [Archive Log](archive_log.py) esegue un archiviazione dei log dei o del mese precedente, cercando di ottimizzare lo spazio disponibile.
+
+Consiglio di lanciarlo periodicamente tramite crontab una volta al mese, in questo modo:
+
+```sh
+chmod +x /path/archive_log.py
+```
+
+E poi eseguirlo periodicamente tramite un crontab:
+
+```sh
+crontab -e
+```
+
+```sh
+0 10 15 * * /usr/bin/python3 /percorso/del/tuo/script.py
+```
 
 ### NB
 
@@ -274,6 +299,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.4.2 : Ottimizzazione del codice.
 - Versione 7.5 : Creazione di uno script di controllo per il file log.
 - Versione 7.5.1 : Bug Fix dello script di verifica del file di log.
+- Versione 7.6 : Creazione di uno script che archivia la directory contenente i log del mese precedente per ottimizzare lo spazio disponibile.
 
 <!-- markdownlint-enable MD033 -->
 
