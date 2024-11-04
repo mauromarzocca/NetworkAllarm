@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.5
+Versione : 7.5.1
 
 ![logo](/img/logo.png)
 
@@ -273,6 +273,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.4.1 : Bug Fix.
 - Versione 7.4.2 : Ottimizzazione del codice.
 - Versione 7.5 : Creazione di uno script di controllo per il file log.
+- Versione 7.5.1 : Bug Fix dello script di verifica del file di log.
 
 <!-- markdownlint-enable MD033 -->
 
