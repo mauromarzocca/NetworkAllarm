@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.6
+Versione : 7.7
 
 ![logo](/img/logo.png)
 
@@ -16,6 +16,7 @@ Versione : 7.6
   - [Configurazione](#configurazione)
     - [Script di controllo 'Creazione Log'](#script-di-controllo-creazione-log)
     - [Script di Archiviazione dei Log](#script-di-archiviazione-dei-log)
+    - [Script di verifica del servizio](#script-di-verifica-del-servizio)
     - [NB](#nb)
   - [Utilizzo](#utilizzo)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
@@ -138,7 +139,7 @@ In questo caso, eseguo il check alle ore 0.05.
 
 ### Script di Archiviazione dei Log
 
-Lo scrip di archiviazione [Archive Log](archive_log.py) esegue un archiviazione dei log dei o del mese precedente, cercando di ottimizzare lo spazio disponibile.
+Lo script di archiviazione [Archive Log](archive_log.py) esegue un archiviazione dei log dei o del mese precedente, cercando di ottimizzare lo spazio disponibile.
 
 Consiglio di lanciarlo periodicamente tramite crontab una volta al mese, in questo modo:
 
@@ -155,6 +156,38 @@ crontab -e
 ```sh
 0 10 15 * * /usr/bin/python3 /path/archive_log.py
 ```
+
+### Script di verifica del servizio
+
+Lo script di controllo [Check_Sevice](check_service.py) esegue una verifica che il servizio sia attivo, in caso contrario lo avvia.
+
+Si consiglia la seguente configurazione:
+
+1. Aggiungere la configurazione nel visudo
+
+    ```sh
+    sudo visudo
+    ```
+
+2. Aggiungere il nome utente ed il path
+
+    ```sh
+    user ALL=(ALL) NOPASSWD: /bin/systemctl start networkallarm.service
+    ```
+
+3. Aprire il crontab
+
+    ```sh
+    crontab -e
+    ```
+
+4. Aggiungere la riga
+
+  ```sh
+  */10 * * * * /path/check_service.py
+  ```
+
+  Questa si occuperà di eseguire una verifica ogni 10 minuti.
 
 ### NB
 
@@ -300,6 +333,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.5 : Creazione di uno script di controllo per il file log.
 - Versione 7.5.1 : Bug Fix dello script di verifica del file di log.
 - Versione 7.6 : Creazione di uno script che archivia la directory contenente i log del mese precedente per ottimizzare lo spazio disponibile.
+- Versione 7.7 : Creazione di uno script che verifica che il servizio sia attivo, in caso non lo fosse lo avvia automaticamente.
 
 <!-- markdownlint-enable MD033 -->
 
