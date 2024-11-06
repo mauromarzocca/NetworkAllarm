@@ -178,10 +178,16 @@ Si consiglia la seguente configurazione:
 3. Aprire il crontab
 
     ```sh
-    crontab -e
+    sudo crontab -e
     ```
 
-4. Aggiungere la riga
+4. Eseguire il comando:
+
+    ```sh
+    sudo pip install -r requirements.txt
+    ```
+
+5. Aggiungere la riga
 
   ```sh
   */10 * * * * /path/check_service.py
@@ -191,7 +197,7 @@ Si consiglia la seguente configurazione:
 
 ### NB
 
-A partire dalla versione 7.0, tutto quello che viene incluso nella variabile 'indirizzi_ping', viene automaticamente importato nel Database.
+- A partire dalla versione 7.0, tutto quello che viene incluso nella variabile 'indirizzi_ping', viene automaticamente importato nel Database.
 
 ---
 

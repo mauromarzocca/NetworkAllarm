@@ -24,9 +24,8 @@ async def main():
         with open(log_file_path, 'a') as log_file:
             orario = datetime.now().strftime('%H:%M:%S')
             log_file.write(f"{orario} - Generazione Esterna\n")
-
-        # Invia un messaggio
-        await invia_messaggio("Generazione esterna", chat_id)  # Usa await
+            # Invia un messaggio
+            await invia_messaggio("Generazione esterna", chat_id)  # Usa await
     else:
         #await invia_messaggio("File già creato", chat_id)
         print("Il file di log è già stato creato. Ignoro lo script.")
