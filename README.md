@@ -198,7 +198,7 @@ Si consiglia la seguente configurazione:
 ### NB
 
 - A partire dalla versione 7.0, tutto quello che viene incluso nella variabile 'indirizzi_ping', viene automaticamente importato nel Database.
-- Lo script di [verifica del servizio](#script-di-verifica-del-servizio) deve essere eseguito con i permessi di amministratore (root), per questo motivo si consiglia quella configurazione.
+- Lo script di [verifica del servizio](#script-di-verifica-del-servizio) deve essere eseguito con i permessi di amministratore (root), per questo motivo si consiglia questa configurazione.
 
 ---
 
