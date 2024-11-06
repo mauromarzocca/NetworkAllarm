@@ -29,12 +29,10 @@ async def main():
             messaggio = f"✅ Il servizio {service_name} è stato avviato con successo."
             print(messaggio)
             try:
-                await invia_messaggio(messaggio, config.chat_id)  # Questa è una funzione asincrona
-                print("Messaggio inviato, ora scrivendo nel log...")
-                scrivi_log("Servizio avviato", service_name)  # Questa è una funzione sincrona, quindi non usare await
-                print("Log scritto con successo.")
+                await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio
             except Exception as e:
-                print(f"Errore durante l'invio del messaggio o la scrittura del log: {e}")
+                print(f"Errore durante l'invio del messaggio: {e}")
+            scrivi_log("Servizio avviato", service_name)  # Scrive nel log solo l'avvio del servizio
         else:
             print(f"⚠️ Impossibile avviare il servizio {service_name}.")
     else:
