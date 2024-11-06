@@ -2,3 +2,4 @@ python-telegram-bot==20.3
 mysql-connector-python==8.0.26
 httpx==0.23.0
 asyncio==3.4.3
+mysql-connector-python==9.1.0
