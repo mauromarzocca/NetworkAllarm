@@ -110,16 +110,51 @@ WantedBy=multi-user.target
     subprocess.check_call(['sudo', 'mv', '/tmp/networkallarm.service', service_file_path])
     print("Servizio creato in:", service_file_path)
 
+# Punto 7
+def install_requirements(repo_dir):
+    """Installa i requisiti dal file requirements.txt in un ambiente virtuale."""
+    os.chdir(repo_dir)  # Cambia nella directory del repository
+    print(f"Installazione dei requisiti in {os.getcwd()}...")
+
+    # Imposta il percorso dell'ambiente virtuale nella directory clonata
+    venv_path = repo_dir  # Usa la directory clonata come percorso per l'ambiente virtuale
+
+    # Creazione dell'ambiente virtuale
+    try:
+        subprocess.check_call(['python3', '-m', 'venv', venv_path])
+        print(f"Ambiente virtuale creato in {venv_path}.")
+    except subprocess.CalledProcessError:
+        print("Errore durante la creazione dell'ambiente virtuale.")
+        return
+
+    # Percorso per l'attivazione e pip
+    activate_script = os.path.join(venv_path, 'bin', 'activate')
+    pip_path = os.path.join(venv_path, 'bin', 'pip')
+
+    # Installazione dei requisiti
+    try:
+        subprocess.check_call([pip_path, 'install', '-r', 'requirenments.txt'])
+        print("Requisiti installati nell'ambiente virtuale.")
+    except subprocess.CalledProcessError:
+        print("Errore durante l'installazione dei requisiti nell'ambiente virtuale.")
+
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
     check_and_install('mysql-server')
+    check_and_install('python3-pip')
+    check_and_install('python3-full')
+
 
     # Clona o aggiorna la repository e ottieni il percorso della directory
     repo_dir = clone_or_update_repository()
 
     # Cambia i permessi degli script
     change_permissions(repo_dir)
+
+    # Installa i requisiti
+    install_requirements(repo_dir)
 
     # Crea il servizio
     user = os.getlogin()  # Ottieni il nome dell'utente corrente
