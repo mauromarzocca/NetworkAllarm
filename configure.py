@@ -9,18 +9,19 @@ SCRIPT DI CONFIGURAZIONE
     - Ottenere il nome utente ed inserirlo in User.
     - Ottenere la directory ed inserirlo in ExecStart e WorkingDirectory.
 6. Comandi relativi al servizio (tranne lo start).
-7. Richiedere il bot_token ed inserirlo nel config.
-8. Richiedere il chat_id ed inserirlo nel config.
-9. Richiedere gli utenti autorizzati ed inserirli nel config.
+7. Esecurizione del requirentment
+8. Richiedere il bot_token ed inserirlo nel config.
+9. Richiedere il chat_id ed inserirlo nel config.
+10. Richiedere gli utenti autorizzati ed inserirli nel config.
     - Iniziare da uno e richiedere se si vuole inserirne altri.
-10. Richiedere utente e password per MySQL.
-11. Configurazione nel crontab per archive_log.
-12. Configurazione nel crontab per check_log.
-13. Configurazione nel crontab (root) per service_log.
-14. Inserimento nel DB (tabella monitor) di:
+11. Richiedere utente e password per MySQL.
+12. Configurazione nel crontab per archive_log.
+13. Configurazione nel crontab per check_log.
+14. Configurazione nel crontab (root) per service_log.
+15. Inserimento nel DB (tabella monitor) di:
     - IP
     - Nome
-15. Avvio del servizio.
+16. Avvio del servizio.
 """
 
 import subprocess
@@ -31,6 +32,7 @@ def install_package(package):
     """Installa un pacchetto usando apt."""
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
 
+# Punto 1
 def check_and_install(package):
     """Controlla se un pacchetto è installato e, in caso contrario, lo installa."""
     try:
@@ -39,18 +41,49 @@ def check_and_install(package):
     except subprocess.CalledProcessError:
         print(f"{package} non è installato. Installazione in corso...")
         subprocess.check_call(['sudo', 'apt', 'install', '-y', package])
-
-def clone_repository():
-    """Clona la repository specificata."""
+# Punto 2
+def clone_or_update_repository():
+    """Clona la repository se non esiste, altrimenti la aggiorna."""
     repo_url = "https://github.com/mauromarzocca/NetworkAllarm.git"
-    subprocess.check_call(['git', 'clone', repo_url])
+    repo_dir = os.path.join(os.getcwd(), "NetworkAllarm")  # Usa il percorso assoluto
+    
+    if os.path.exists(repo_dir):
+        print(f"La directory {repo_dir} esiste già. Aggiornamento della repository...")
+        os.chdir(repo_dir)
+        try:
+            subprocess.check_call(['git', 'pull'])
+        except subprocess.CalledProcessError as e:
+            print("Errore durante l'aggiornamento della repository. Assicurati di avere i permessi necessari.")
+            sys.exit(1)
+    else:
+        print(f"Clonazione della repository {repo_url}...")
+        subprocess.check_call(['git', 'clone', repo_url])
+        os.chdir(repo_dir)
+        # Aggiungi la directory come sicura
+        subprocess.check_call(['git', 'config', '--global', '--add', 'safe.directory', os.getcwd()])
+    
+    return repo_dir  # Restituisce il percorso della directory clonata
 
-def change_permissions():
+# Punto 3
+def change_permissions(repo_dir):
     """Cambia i permessi degli script nella directory NetworkAllarm."""
+    print(f"Attuale directory di lavoro: {os.getcwd()}")
+    os.chdir(repo_dir)  # Assicurati di essere nella directory corretta
+    print(f"Cambiato in directory: {os.getcwd()}")
+    
     scripts = ['check_service.py', 'archive_log.py', 'check_log.py']
     for script in scripts:
-        subprocess.check_call(['chmod', '+x', f'NetworkAllarm/{script}'])
+        script_path = os.path.join(os.getcwd(), script)  # Usa il percorso assoluto
+        if os.path.exists(script_path):
+            try:
+                subprocess.check_call(['sudo', 'chmod', '+x', script_path])
+                print(f"Permessi modificati per {script_path}.")
+            except subprocess.CalledProcessError:
+                print(f"Errore durante la modifica dei permessi per {script_path}. Assicurati di avere i permessi necessari.")
+        else:
+            print(f"Warning: {script_path} non trovato.")
 
+# Punto 4
 def create_service(user, script_path):
     """Crea un file di servizio systemd."""
     service_content = f"""[Unit]
@@ -63,14 +96,18 @@ WorkingDirectory={script_path}
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
-User ={user}
+User      ={user}
 
 [Install]
 WantedBy=multi-user.target
 """
     service_file_path = '/etc/systemd/system/networkallarm.service'
-    with open(service_file_path, 'w') as service_file:
+    
+    # Scrivi il file di servizio usando sudo
+    with open('/tmp/networkallarm.service', 'w') as service_file:
         service_file.write(service_content)
+
+    subprocess.check_call(['sudo', 'mv', '/tmp/networkallarm.service', service_file_path])
     print("Servizio creato in:", service_file_path)
 
 def main():
@@ -78,24 +115,22 @@ def main():
     check_and_install('git')
     check_and_install('mysql-server')
 
-    # Clona la repository
-    clone_repository()
+    # Clona o aggiorna la repository e ottieni il percorso della directory
+    repo_dir = clone_or_update_repository()
 
-    # Entra nella directory NetworkAllarm
-    os.chdir('NetworkAllarm')
-
-    # Esegui chmod +x sugli script
-    change_permissions()
-
-    # Ottieni il nome utente e il percorso attuale
-    user = subprocess.check_output(['whoami']).decode().strip()
-    script_path = os.getcwd()
+    # Cambia i permessi degli script
+    change_permissions(repo_dir)
 
     # Crea il servizio
-    create_service(user, script_path)
+    user = os.getlogin()  # Ottieni il nome dell'utente corrente
+    create_service(user, repo_dir)
 
-    # Ricarica il daemon di systemd e abilita il servizio
+    # Esegui i comandi per ricaricare il daemon e abilitare il servizio
+    # Punto 6
+    print("Ricaricando il daemon di systemd...")
     subprocess.check_call(['sudo', 'systemctl', 'daemon-reload'])
+    
+    print("Abilitando il servizio all'avvio...")
     subprocess.check_call(['sudo', 'systemctl', 'enable', 'networkallarm.service'])
 
 if __name__ == "__main__":
