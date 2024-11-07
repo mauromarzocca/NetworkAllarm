@@ -1,6 +1,7 @@
 import subprocess
 import config
 import asyncio
+import os
 from main import invia_messaggio, scrivi_log
 
 def is_service_running(service_name):
@@ -20,7 +21,21 @@ def start_service(service_name):
         print(f"Errore durante l'avvio del servizio {service_name}: {e}")
         return False
 
+def change_password():
+    """Esegue il comando passwd."""
+    try:
+        subprocess.run(['passwd'], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Errore durante l'esecuzione di passwd: {e}")
+
 async def main():
+    # Cambia la directory corrente alla cartella dello script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
+
+    # Esegui il comando passwd
+    change_password()
+
     service_name = 'networkallarm.service'  # Nome del servizio
 
     if not is_service_running(service_name):
