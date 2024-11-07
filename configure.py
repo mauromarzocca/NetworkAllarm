@@ -138,6 +138,24 @@ def install_requirements(repo_dir):
     except subprocess.CalledProcessError:
         print("Errore durante l'installazione dei requisiti nell'ambiente virtuale.")
 
+def update_bot_token(repo_dir, new_token):
+    """Aggiorna il bot_token nel file config.py."""
+    config_file_path = os.path.join(repo_dir, 'config.py')
+
+    try:
+        with open(config_file_path, 'r') as file:
+            lines = file.readlines()
+
+        with open(config_file_path, 'w') as file:
+            for line in lines:
+                if line.startswith("bot_token ="):
+                    file.write(f"bot_token = '{new_token}'\n")  # Scrive il nuovo token
+                else:
+                    file.write(line)  # Scrive le altre righe senza modifiche
+
+        print("bot_token aggiornato con successo.")
+    except Exception as e:
+        print(f"Errore durante l'aggiornamento del bot_token: {e}")
 
 def main():
     # Verifica e installa git e mysql
@@ -146,12 +164,17 @@ def main():
     check_and_install('python3-pip')
     check_and_install('python3-full')
 
-
     # Clona o aggiorna la repository e ottieni il percorso della directory
     repo_dir = clone_or_update_repository()
 
     # Cambia i permessi degli script
     change_permissions(repo_dir)
+
+    # Richiedi il bot_token all'utente
+    user_token = input("Inserisci il tuo bot_token: ")
+
+    # Aggiorna il bot_token nel file config.py
+    update_bot_token(repo_dir, user_token)
 
     # Installa i requisiti
     install_requirements(repo_dir)
@@ -161,7 +184,6 @@ def main():
     create_service(user, repo_dir)
 
     # Esegui i comandi per ricaricare il daemon e abilitare il servizio
-    # Punto 6
     print("Ricaricando il daemon di systemd...")
     subprocess.check_call(['sudo', 'systemctl', 'daemon-reload'])
     
