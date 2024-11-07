@@ -251,6 +251,42 @@ def add_crontab_entry(repo_dir):
     else:
         print("Le voci sono già presenti nel crontab.")
 
+# Punto 14
+def add_sudoers_entry(user):
+    """Aggiunge un'entry nel file sudoers per consentire l'esecuzione senza password di systemctl per l'utente specificato."""
+    sudoers_entry = f"#NetworkAllarm\n{user} ALL=(ALL) NOPASSWD: /bin/systemctl start networkallarm.service\n"
+    
+    # Usa visudo per modificare il file sudoers
+    try:
+        # Comando per aggiungere l'entry
+        subprocess.check_call(['sudo', 'bash', '-c', f'echo "{sudoers_entry}" >> /etc/sudoers'])
+        print(f"Voce aggiunta al file sudoers per l'utente {user}.")
+    except Exception as e:
+        print(f"Errore durante l'aggiunta dell'entry sudoers: {e}")
+
+# Punto 14
+def add_root_crontab_entry(repo_dir):
+    """Aggiunge un'entry al crontab di root per eseguire check_service.py ogni 10 minuti."""
+    cron_job = f"*/10 * * * * /usr/bin/python3 {os.path.join(repo_dir, 'check_service.py')}\n"
+    
+    # Ottieni le attuali voci del crontab di root
+    try:
+        current_crontab = subprocess.check_output(['sudo', '/usr/bin/crontab', '-l']).decode('utf-8')
+    except subprocess.CalledProcessError:
+        current_crontab = ''  # Se non ci sono voci, impostiamo a una stringa vuota
+
+    # Aggiungi il nuovo cron job se non è già presente
+    if cron_job not in current_crontab:
+        new_crontab = current_crontab + cron_job
+        with open('/tmp/root_crontab.txt', 'w') as f:
+            f.write(new_crontab)
+        
+        # Installa il nuovo crontab di root
+        subprocess.check_call(['sudo', '/usr/bin/crontab', '/tmp/root_crontab.txt'])
+        print("Voce aggiunta al crontab di root con successo.")
+    else:
+        print("La voce è già presente nel crontab di root.")
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
@@ -308,6 +344,12 @@ def main():
     # Aggiungi l'entry al crontab
     add_crontab_entry(repo_dir)
 
+     # Aggiungi l'entry al file sudoers
+    user = os.getlogin()  # Ottieni il nome dell'utente corrente
+    add_sudoers_entry(user)
+
+    # Aggiungi l'entry al crontab di root
+    add_root_crontab_entry(repo_dir)
 
     # Esegui i comandi per ricaricare il daemon e abilitare il servizio
     print("Ricaricando il daemon di systemd...")
