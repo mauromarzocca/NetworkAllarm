@@ -138,6 +138,7 @@ def install_requirements(repo_dir):
     except subprocess.CalledProcessError:
         print("Errore durante l'installazione dei requisiti nell'ambiente virtuale.")
 
+# Punto 8
 def update_bot_token(repo_dir, new_token):
     """Aggiorna il bot_token nel file config.py."""
     config_file_path = os.path.join(repo_dir, 'config.py')
@@ -157,6 +158,27 @@ def update_bot_token(repo_dir, new_token):
     except Exception as e:
         print(f"Errore durante l'aggiornamento del bot_token: {e}")
 
+# Punto 9
+def update_chat_id(repo_dir, new_chat_id):
+    """Aggiorna il chat_id nel file config.py."""
+    config_file_path = os.path.join(repo_dir, 'config.py')
+
+    try:
+        with open(config_file_path, 'r') as file:
+            lines = file.readlines()
+
+        with open(config_file_path, 'w') as file:
+            for line in lines:
+                if line.startswith("chat_id ="):
+                    file.write(f"chat_id = '{new_chat_id}'\n")  # Scrive il nuovo chat_id
+                else:
+                    file.write(line)  # Scrive le altre righe senza modifiche
+
+        print("chat_id aggiornato con successo.")
+    except Exception as e:
+        print(f"Errore durante l'aggiornamento del chat_id: {e}")
+
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
@@ -175,6 +197,12 @@ def main():
 
     # Aggiorna il bot_token nel file config.py
     update_bot_token(repo_dir, user_token)
+
+    # Richiedi il chat_id all'utente
+    user_chat_id = input("Inserisci il tuo chat_id: ")
+
+    # Aggiorna il chat_id nel file config.py
+    update_chat_id(repo_dir, user_chat_id)
 
     # Installa i requisiti
     install_requirements(repo_dir)
