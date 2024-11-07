@@ -198,6 +198,28 @@ def update_autorizzati(repo_dir, new_autorizzati):
     except Exception as e:
         print(f"Errore durante l'aggiornamento della lista autorizzati: {e}")
 
+# Punto 11
+def update_db_credentials(repo_dir, new_user, new_password):
+    """Aggiorna le credenziali del database nel file config.py."""
+    config_file_path = os.path.join(repo_dir, 'config.py')
+
+    try:
+        with open(config_file_path, 'r') as file:
+            lines = file.readlines()
+
+        with open(config_file_path, 'w') as file:
+            for line in lines:
+                if line.startswith("DB_USER ="):
+                    file.write(f"DB_USER = '{new_user}'\n")  # Scrive il nuovo DB_USER
+                elif line.startswith("DB_PASSWORD ="):
+                    file.write(f"DB_PASSWORD = '{new_password}'\n")  # Scrive il nuovo DB_PASSWORD
+                else:
+                    file.write(line)  # Scrive le altre righe senza modifiche
+
+        print("Credenziali del database aggiornate con successo.")
+    except Exception as e:
+        print(f"Errore durante l'aggiornamento delle credenziali del database: {e}")
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
@@ -236,6 +258,13 @@ def main():
 
     # Aggiorna la lista degli autorizzati nel file config.py
     update_autorizzati(repo_dir, autorizzati)
+
+    # Richiesta delle credenziali del database
+    db_user = input("Inserisci il nome utente del database MySQL: ")
+    db_password = input("Inserisci la password del database MySQL: ")
+
+    # Aggiorna le credenziali del database nel file config.py
+    update_db_credentials(repo_dir, db_user, db_password)
 
     # Installa i requisiti
     install_requirements(repo_dir)
