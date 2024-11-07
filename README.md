@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.7
+Versione : 7.7.1
 
 ![logo](/img/logo.png)
 
@@ -342,6 +342,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.5.1 : Bug Fix dello script di verifica del file di log.
 - Versione 7.6 : Creazione di uno script che archivia la directory contenente i log del mese precedente per ottimizzare lo spazio disponibile.
 - Versione 7.7 : Creazione di uno script che verifica che il servizio sia attivo, in caso non lo fosse lo avvia automaticamente.
+- Versione 7.7.1 : Bug Fix.
 
 <!-- markdownlint-enable MD033 -->
 
