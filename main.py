@@ -265,13 +265,12 @@ async def invia_contenuto_file():
         with open(nome_file, 'r') as file:
             contenuto_file = file.readlines()
 
-        # Conta il numero di occorrenze di "Avvio dello script" e "Servizio Avviato"
+        # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
-        numero_servizi_avviati = sum(1 for line in contenuto_file if "c" in line)
 
         # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
         contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
-            excl in line.lower() for excl in ["inizio giornata", "avvio dello script", "servizio avviato"])]
+            excl in line.lower() for excl in ["inizio giornata", "avvio dello script"])]
 
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
@@ -280,17 +279,10 @@ async def invia_contenuto_file():
             numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
             if numero_avvii > 1:
                 await invia_messaggio(f"Avvio dello script: {numero_avvii}", config.chat_id)
-            
-            numero_servizi_avviati = sum(1 for line in contenuto_file if "Servizio Avviato" in line)
-            if numero_servizi_avviati > 0:
-                await invia_messaggio(f"Avvio Forzato: {numero_servizi_avviati}", config.chat_id)
-                
         else:
             if numero_avvii > 1:
                 messaggio_avvii = f"Avvio dello script : {numero_avvii}"
                 contenuto_da_inviare.insert(0, messaggio_avvii)
-            #if numero_servizi_avviati > 0:
-             #   messaggio_avvii = f"Avvio Forzato : {numero_avvii}"
 
             contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
             print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
@@ -315,31 +307,22 @@ async def invia_log_corrente(chat_id):
         
         # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
-        numero_servizi_avviati = sum(1 for line in contenuto_file if "Servizio Avviato" in line)
 
         # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
         contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
-            excl in line.lower() for excl in ["inizio giornata", "avvio dello script", "servizio avviato"])]
+            excl in line.lower() for excl in ["inizio giornata", "avvio dello script"])]
 
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
             await invia_messaggio("✅ Nessun evento da segnalare.", chat_id)
             # Conta il numero di occorrenze di "Avvio dello script"
             numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
-            numero_servizi_avviati = sum(1 for line in contenuto_file if "Servizio Avviato" in line)
-
             if numero_avvii > 1:
                 await invia_messaggio(f"Avvio dello script: {numero_avvii}", chat_id)
-            
-            if numero_servizi_avviati > 0:
-                await invia_messaggio(f"Avvio Forzato: {numero_servizi_avviati}", chat_id)
-            
         else:
             if numero_avvii > 1:
                 messaggio_avvii = f"Avvio dello script : {numero_avvii}"
                 contenuto_da_inviare.insert(0, messaggio_avvii)
-            if numero_servizi_avviati > 0:
-                await invia_messaggio(f"Avvio Forzato: {numero_servizi_avviati}", chat_id)
 
             contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
             print("Contenuto del file testuale del giorno corrente:", contenuto_da_inviare)
