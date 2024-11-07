@@ -178,6 +178,25 @@ def update_chat_id(repo_dir, new_chat_id):
     except Exception as e:
         print(f"Errore durante l'aggiornamento del chat_id: {e}")
 
+# Punto 10
+def update_autorizzati(repo_dir, new_autorizzati):
+    """Aggiorna la lista degli autorizzati nel file config.py."""
+    config_file_path = os.path.join(repo_dir, 'config.py')
+
+    try:
+        with open(config_file_path, 'r') as file:
+            lines = file.readlines()
+
+        with open(config_file_path, 'w') as file:
+            for line in lines:
+                if line.startswith("autorizzati ="):
+                    file.write(f"autorizzati = [{', '.join(map(str, new_autorizzati))}]\n")  # Scrive la nuova lista
+                else:
+                    file.write(line)  # Scrive le altre righe senza modifiche
+
+        print("Lista autorizzati aggiornata con successo.")
+    except Exception as e:
+        print(f"Errore durante l'aggiornamento della lista autorizzati: {e}")
 
 def main():
     # Verifica e installa git e mysql
@@ -203,6 +222,20 @@ def main():
 
     # Aggiorna il chat_id nel file config.py
     update_chat_id(repo_dir, user_chat_id)
+
+    # Richiesta di autorizzati
+    autorizzati = []
+    while True:
+        user_id = input("Inserisci un ID autorizzato: ")
+        autorizzati.append(user_id)
+
+        # Chiedi se si vogliono inserire altri utenti
+        another = input("Vuoi inserire un altro ID autorizzato? (y/n): ").strip().lower()
+        if another != 'y':
+            break
+
+    # Aggiorna la lista degli autorizzati nel file config.py
+    update_autorizzati(repo_dir, autorizzati)
 
     # Installa i requisiti
     install_requirements(repo_dir)
