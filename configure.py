@@ -220,10 +220,11 @@ def update_db_credentials(repo_dir, new_user, new_password):
     except Exception as e:
         print(f"Errore durante l'aggiornamento delle credenziali del database: {e}")
 
-# Punto 12
+# Punto 12 - Punto 13
 def add_crontab_entry(repo_dir):
-    """Aggiunge un'entry al crontab per eseguire check_log.py ogni giorno alle 00:05."""
-    cron_job = f"5 0 * * * /usr/bin/python3 {os.path.join(repo_dir, 'check_log.py')}\n"
+    """Aggiunge due entry al crontab: una per check_log.py e una per archive_log.py."""
+    check_log_job = f"5 0 * * * /usr/bin/python3 {os.path.join(repo_dir, 'check_log.py')}\n"
+    archive_log_job = f"0 10 15 * * /usr/bin/python3 {os.path.join(repo_dir, 'archive_log.py')}\n"
     
     # Ottieni le attuali voci del crontab
     try:
@@ -231,9 +232,16 @@ def add_crontab_entry(repo_dir):
     except subprocess.CalledProcessError:
         current_crontab = ''  # Se non ci sono voci, impostiamo a una stringa vuota
 
-    # Aggiungi il nuovo cron job se non è già presente
-    if cron_job not in current_crontab:
-        new_crontab = current_crontab + cron_job
+    # Aggiungi i nuovi cron job se non sono già presenti
+    new_crontab = current_crontab
+    if check_log_job not in current_crontab:
+        new_crontab += check_log_job
+
+    if archive_log_job not in current_crontab:
+        new_crontab += archive_log_job
+
+    # Se ci sono modifiche, aggiorna il crontab
+    if new_crontab != current_crontab:
         with open('/tmp/crontab.txt', 'w') as f:
             f.write(new_crontab)
         
@@ -241,7 +249,7 @@ def add_crontab_entry(repo_dir):
         subprocess.check_call(['/usr/bin/crontab', '/tmp/crontab.txt'])
         print("Voce aggiunta al crontab con successo.")
     else:
-        print("La voce è già presente nel crontab.")
+        print("Le voci sono già presenti nel crontab.")
 
 def main():
     # Verifica e installa git e mysql
