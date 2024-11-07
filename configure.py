@@ -220,9 +220,33 @@ def update_db_credentials(repo_dir, new_user, new_password):
     except Exception as e:
         print(f"Errore durante l'aggiornamento delle credenziali del database: {e}")
 
+# Punto 12
+def add_crontab_entry(repo_dir):
+    """Aggiunge un'entry al crontab per eseguire check_log.py ogni giorno alle 00:05."""
+    cron_job = f"5 0 * * * /usr/bin/python3 {os.path.join(repo_dir, 'check_log.py')}\n"
+    
+    # Ottieni le attuali voci del crontab
+    try:
+        current_crontab = subprocess.check_output(['/usr/bin/crontab', '-l']).decode('utf-8')
+    except subprocess.CalledProcessError:
+        current_crontab = ''  # Se non ci sono voci, impostiamo a una stringa vuota
+
+    # Aggiungi il nuovo cron job se non è già presente
+    if cron_job not in current_crontab:
+        new_crontab = current_crontab + cron_job
+        with open('/tmp/crontab.txt', 'w') as f:
+            f.write(new_crontab)
+        
+        # Installa il nuovo crontab
+        subprocess.check_call(['/usr/bin/crontab', '/tmp/crontab.txt'])
+        print("Voce aggiunta al crontab con successo.")
+    else:
+        print("La voce è già presente nel crontab.")
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
+    check_and_install('cron')
     check_and_install('mysql-server')
     check_and_install('python3-pip')
     check_and_install('python3-full')
@@ -272,6 +296,10 @@ def main():
     # Crea il servizio
     user = os.getlogin()  # Ottieni il nome dell'utente corrente
     create_service(user, repo_dir)
+
+    # Aggiungi l'entry al crontab
+    add_crontab_entry(repo_dir)
+
 
     # Esegui i comandi per ricaricare il daemon e abilitare il servizio
     print("Ricaricando il daemon di systemd...")
