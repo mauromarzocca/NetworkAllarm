@@ -143,8 +143,11 @@ def install_requirements(repo_dir):
         print("Errore durante l'installazione dei requisiti nell'ambiente virtuale.")
 
 # Punto 8
-def update_bot_token(repo_dir, new_token):
+def update_bot_token(repo_dir, new_token, existing_token):
     """Aggiorna il bot_token nel file config.py."""
+    if new_token.strip() == "":
+        new_token = existing_token  # Mantieni il valore esistente
+
     config_file_path = os.path.join(repo_dir, 'config.py')
 
     try:
@@ -163,8 +166,11 @@ def update_bot_token(repo_dir, new_token):
         print(f"Errore durante l'aggiornamento del bot_token: {e}")
 
 # Punto 9
-def update_chat_id(repo_dir, new_chat_id):
+def update_chat_id(repo_dir, new_chat_id, existing_chat_id):
     """Aggiorna il chat_id nel file config.py."""
+    if new_chat_id.strip() == "":
+        new_chat_id = existing_chat_id  # Mantieni il valore esistente
+
     config_file_path = os.path.join(repo_dir, 'config.py')
 
     try:
@@ -183,7 +189,7 @@ def update_chat_id(repo_dir, new_chat_id):
         print(f"Errore durante l'aggiornamento del chat_id: {e}")
 
 # Punto 10
-def update_autorizzati(repo_dir, new_autorizzati):
+def update_autorizzati(repo_dir, autorizzati):
     """Aggiorna la lista degli autorizzati nel file config.py."""
     config_file_path = os.path.join(repo_dir, 'config.py')
 
@@ -194,13 +200,41 @@ def update_autorizzati(repo_dir, new_autorizzati):
         with open(config_file_path, 'w') as file:
             for line in lines:
                 if line.startswith("autorizzati ="):
-                    file.write(f"autorizzati = [{', '.join(map(str, new_autorizzati))}]\n")  # Scrive la nuova lista
+                    file.write(f"autorizzati = {autorizzati}\n")  # Scrive la nuova lista degli autorizzati
                 else:
                     file.write(line)  # Scrive le altre righe senza modifiche
 
-        print("Lista autorizzati aggiornata con successo.")
+        print("Lista degli autorizzati aggiornata con successo.")
     except Exception as e:
-        print(f"Errore durante l'aggiornamento della lista autorizzati: {e}")
+        print(f"Errore durante l'aggiornamento della lista degli autorizzati: {e}")
+
+def request_autorizzati(repo_dir):
+    """Richiede all'utente di inserire nuovi ID autorizzati, mantenendo quelli esistenti."""
+    # Carica la configurazione esistente
+    config = load_config()
+    
+    # Carica gli autorizzati esistenti
+    autorizzati = config.autorizzati if hasattr(config, 'autorizzati') else []
+    print("Autorizzati attuali:", autorizzati)
+
+    # Se non ci sono autorizzati esistenti, inizializza come lista vuota
+    if not autorizzati:
+        autorizzati = []
+
+    while True:
+        user_id = input("Inserisci un ID autorizzato (lascia vuoto per mantenere i valori esistenti): ")
+        
+        # Se l'input non è vuoto, aggiungi l'ID
+        if user_id.strip():
+            autorizzati.append(user_id)
+
+        # Chiedi se si vogliono inserire altri utenti
+        another = input("Vuoi inserire un altro ID autorizzato? (y/n): ").strip().lower()
+        if another != 'y':
+            break
+
+    # Aggiorna la lista degli autorizzati nel file config.py
+    update_autorizzati(repo_dir, autorizzati)
 
 # Punto 11
 def update_db_credentials(repo_dir, new_user, new_password):
@@ -319,17 +353,20 @@ def insert_device(connection, nome_dispositivo, indirizzo_ip):
         if 'cursor' in locals():
             cursor.close()  # Chiudi il cursore solo se è stato creato
 
-def ask_device_details(connection):
+def ask_device_details(connection, config):
     """Richiede all'utente il nome e l'indirizzo IP del dispositivo da monitorare."""
-    nome_dispositivo = input("Inserisci il nome del dispositivo: ")
-    indirizzo_ip = input("Inserisci l'indirizzo IP del dispositivo: ")
+    nome_dispositivo = input("Inserisci il nome del dispositivo (lascia vuoto per mantenere il valore esistente): ") or config.Nome
+    indirizzo_ip = input("Inserisci l'indirizzo IP del dispositivo (lascia vuoto per mantenere il valore esistente): ") or config.IP
 
     # Verifica se l'indirizzo IP è valido
     try:
-        ipaddress.ip_address(indirizzo_ip)
-        print(f"Preparando a inserire: Nome: {nome_dispositivo}, IP: {indirizzo_ip}")
-        # Se l'IP è valido, inserisci nel database
-        insert_device(connection, nome_dispositivo, indirizzo_ip)
+        if indirizzo_ip:  # Solo se l'IP è fornito, controlla la validità
+            ipaddress.ip_address(indirizzo_ip)
+            print(f"Preparando a inserire: Nome: {nome_dispositivo}, IP: {indirizzo_ip}")
+            # Se l'IP è valido, inserisci nel database
+            insert_device(connection, nome_dispositivo, indirizzo_ip)
+        else:
+            print("⚠️ Indirizzo IP non fornito. Operazione annullata.")
     except ValueError:
         print("⚠️ Indirizzo IP non valido. Riprova.")
 
@@ -372,6 +409,14 @@ def create_database_and_table(config):
         print(f"Errore durante la connessione a MySQL: {e}")
         return None  # Restituisci None in caso di errore
 
+def load_config():
+    """Carica la configurazione esistente dal file config.py."""
+    config_path = os.path.join(os.getcwd(), 'config.py')
+    spec = importlib.util.spec_from_file_location("config", config_path)
+    config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(config)
+    return config
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
@@ -386,31 +431,23 @@ def main():
     # Cambia i permessi degli script
     change_permissions(repo_dir)
 
+    # Carica la configurazione esistente
+    config = load_config()
+
     # Richiedi il bot_token all'utente
-    user_token = input("Inserisci il tuo bot_token: ")
+    user_token = input(f"Inserisci il tuo bot_token (lascia vuoto per mantenere '{config.bot_token}'): ") or config.bot_token
 
     # Aggiorna il bot_token nel file config.py
-    update_bot_token(repo_dir, user_token)
+    update_bot_token(repo_dir, user_token, config.bot_token)
 
     # Richiedi il chat_id all'utente
-    user_chat_id = input("Inserisci il tuo chat_id: ")
+    user_chat_id = input(f"Inserisci il tuo chat_id (lascia vuoto per mantenere '{config.chat_id}'): ") or config.chat_id
 
     # Aggiorna il chat_id nel file config.py
-    update_chat_id(repo_dir, user_chat_id)
+    update_chat_id(repo_dir, user_chat_id, config.chat_id)
 
     # Richiesta di autorizzati
-    autorizzati = []
-    while True:
-        user_id = input("Inserisci un ID autorizzato: ")
-        autorizzati.append(user_id)
-
-        # Chiedi se si vogliono inserire altri utenti
-        another = input("Vuoi inserire un altro ID autorizzato? (y/n): ").strip().lower()
-        if another != 'y':
-            break
-
-    # Aggiorna la lista degli autorizzati nel file config.py
-    update_autorizzati(repo_dir, autorizzati)
+    request_autorizzati(repo_dir)  # Aggiungi questa chiamata
 
     # Richiesta delle credenziali del database
     db_user = input("Inserisci il nome utente del database MySQL: ")
@@ -444,7 +481,7 @@ def main():
 
     if connection:  # Verifica che la connessione sia stata creata
         # Chiedi all'utente di inserire il nome e l'indirizzo IP del dispositivo
-        ask_device_details(connection)  # Passa la connessione alla funzione
+        ask_device_details(connection, config)  # Passa la connessione alla funzione
 
         # Chiudi la connessione dopo aver finito
         connection.close()  # Chiudi la connessione al database
