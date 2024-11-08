@@ -27,6 +27,10 @@ SCRIPT DI CONFIGURAZIONE
 import subprocess
 import sys
 import os
+import mysql.connector
+from mysql.connector import Error
+import importlib.util
+import ipaddress
 
 def install_package(package):
     """Installa un pacchetto usando apt."""
@@ -287,6 +291,87 @@ def add_root_crontab_entry(repo_dir):
     else:
         print("La voce è già presente nel crontab di root.")
 
+# Punto 15
+# Funzione per caricare il file di configurazione
+def load_config():
+    config_path = os.path.join(os.getcwd(), 'config.py')
+    spec = importlib.util.spec_from_file_location("config", config_path)
+    config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(config)
+    return config
+
+# Funzione per inserire un dispositivo nel database
+def insert_device(connection, nome_dispositivo, indirizzo_ip):
+    """Inserisce un dispositivo nella tabella monitor."""
+    if connection is None or not connection.is_connected():
+        print("⚠️ Connessione al database non disponibile.")
+        return
+
+    try:
+        cursor = connection.cursor()
+        query = "INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)"
+        cursor.execute(query, (nome_dispositivo, indirizzo_ip, False))
+        connection.commit()
+        print(f"Dispositivo '{nome_dispositivo}' con IP '{indirizzo_ip}' aggiunto con successo.")
+    except Error as e:
+        print(f"Errore durante l'inserimento del dispositivo: {e}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()  # Chiudi il cursore solo se è stato creato
+
+def ask_device_details(connection):
+    """Richiede all'utente il nome e l'indirizzo IP del dispositivo da monitorare."""
+    nome_dispositivo = input("Inserisci il nome del dispositivo: ")
+    indirizzo_ip = input("Inserisci l'indirizzo IP del dispositivo: ")
+
+    # Verifica se l'indirizzo IP è valido
+    try:
+        ipaddress.ip_address(indirizzo_ip)
+        print(f"Preparando a inserire: Nome: {nome_dispositivo}, IP: {indirizzo_ip}")
+        # Se l'IP è valido, inserisci nel database
+        insert_device(connection, nome_dispositivo, indirizzo_ip)
+    except ValueError:
+        print("⚠️ Indirizzo IP non valido. Riprova.")
+
+# Modifica la funzione create_database_and_table per restituire la connessione
+def create_database_and_table(config):
+    """Crea un database e una tabella in MySQL utilizzando le credenziali dal file di configurazione."""
+    connection = None
+    try:
+        # Connessione al server MySQL
+        connection = mysql.connector.connect(
+            host='localhost',
+            user=config.DB_USER,
+            password=config.DB_PASSWORD
+        )
+
+        if connection.is_connected():
+            cursor = connection.cursor()
+
+            # Creazione del database
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.DB_NAME};")
+            print(f"Database '{config.DB_NAME}' creato o già esistente.")
+
+            # Seleziona il database
+            cursor.execute(f"USE {config.DB_NAME};")
+
+            # Creazione della tabella 'monitor'
+            create_table_query = """
+            CREATE TABLE IF NOT EXISTS monitor (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                Nome VARCHAR(255) NOT NULL,
+                IP VARCHAR(15) NOT NULL UNIQUE,
+                Maintenence BOOLEAN DEFAULT FALSE
+            );
+            """
+            cursor.execute(create_table_query)
+            print("Tabella 'monitor' creata o già esistente.")
+            return connection  # Restituisci la connessione
+
+    except Error as e:
+        print(f"Errore durante la connessione a MySQL: {e}")
+        return None  # Restituisci None in caso di errore
+
 def main():
     # Verifica e installa git e mysql
     check_and_install('git')
@@ -350,6 +435,19 @@ def main():
 
     # Aggiungi l'entry al crontab di root
     add_root_crontab_entry(repo_dir)
+
+    # Carica la configurazione
+    config = load_config()
+
+     # Crea il database e la tabella
+    connection = create_database_and_table(config)  # Ottieni la connessione
+
+    if connection:  # Verifica che la connessione sia stata creata
+        # Chiedi all'utente di inserire il nome e l'indirizzo IP del dispositivo
+        ask_device_details(connection)  # Passa la connessione alla funzione
+
+        # Chiudi la connessione dopo aver finito
+        connection.close()  # Chiudi la connessione al database
 
     # Esegui i comandi per ricaricare il daemon e abilitare il servizio
     print("Ricaricando il daemon di systemd...")
