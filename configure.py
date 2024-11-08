@@ -249,9 +249,15 @@ def update_db_credentials(repo_dir, new_user, new_password):
         with open(config_file_path, 'w') as file:
             for line in lines:
                 if line.startswith("DB_USER ="):
-                    file.write(f"DB_USER = '{new_user}'\n")  # Scrive il nuovo DB_USER
+                    if new_user.strip():  # Solo se new_user non è vuoto
+                        file.write(f"DB_USER = '{new_user}'\n")  # Scrive il nuovo DB_USER
+                    else:
+                        file.write(line)  # Mantiene il valore esistente
                 elif line.startswith("DB_PASSWORD ="):
-                    file.write(f"DB_PASSWORD = '{new_password}'\n")  # Scrive il nuovo DB_PASSWORD
+                    if new_password.strip():  # Solo se new_password non è vuoto
+                        file.write(f"DB_PASSWORD = '{new_password}'\n")  # Scrive il nuovo DB_PASSWORD
+                    else:
+                        file.write(line)  # Mantiene il valore esistente
                 else:
                     file.write(line)  # Scrive le altre righe senza modifiche
 
@@ -464,20 +470,18 @@ def main():
     request_autorizzati(repo_dir)  # Aggiungi questa chiamata
 
     # Richiesta delle credenziali del database
-    db_user = input("Inserisci il nome utente del database MySQL: ")
-
+    db_user = input("Inserisci il nome utente del database MySQL (lascia vuoto per mantenere il valore esistente): ")
     while True:
-        db_password1 = getpass.getpass("Inserisci la password del database MySQL: ")
+        db_password1 = getpass.getpass("Inserisci la password del database MySQL (lascia vuoto per mantenere il valore esistente): ")
         db_password2 = getpass.getpass("Inserisci nuovamente la password: ")
         
-        if db_password1 == db_password2:
-            break  # Esci dal ciclo se le password coincidono
+        if db_password1 == db_password2 or not db_password1:  # Permetti di lasciare vuoto
+            break  # Esci dal ciclo se le password coincidono o se è vuoto
         else:
             print("Le password non coincidono. Riprova.")
 
     # Aggiorna le credenziali del database nel file config.py
     update_db_credentials(repo_dir, db_user, db_password1)
-
 
     # Installa i requisiti
     install_requirements(repo_dir)
