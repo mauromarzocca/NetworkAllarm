@@ -31,6 +31,7 @@ import mysql.connector
 from mysql.connector import Error
 import importlib.util
 import ipaddress
+import getpass
 
 def install_package(package):
     """Installa un pacchetto usando apt."""
@@ -258,6 +259,7 @@ def update_db_credentials(repo_dir, new_user, new_password):
     except Exception as e:
         print(f"Errore durante l'aggiornamento delle credenziali del database: {e}")
 
+
 # Punto 12 - Punto 13
 def add_crontab_entry(repo_dir):
     """Aggiunge due entry al crontab: una per check_log.py e una per archive_log.py."""
@@ -451,10 +453,19 @@ def main():
 
     # Richiesta delle credenziali del database
     db_user = input("Inserisci il nome utente del database MySQL: ")
-    db_password = input("Inserisci la password del database MySQL: ")
+
+    while True:
+        db_password1 = getpass.getpass("Inserisci la password del database MySQL: ")
+        db_password2 = getpass.getpass("Inserisci nuovamente la password: ")
+        
+        if db_password1 == db_password2:
+            break  # Esci dal ciclo se le password coincidono
+        else:
+            print("Le password non coincidono. Riprova.")
 
     # Aggiorna le credenziali del database nel file config.py
-    update_db_credentials(repo_dir, db_user, db_password)
+    update_db_credentials(repo_dir, db_user, db_password1)
+
 
     # Installa i requisiti
     install_requirements(repo_dir)
