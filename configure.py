@@ -396,7 +396,7 @@ def ask_device_details(connection):
 
     # Se il nome del dispositivo è vuoto, non chiedere l'indirizzo IP
     if not nome_dispositivo.strip():
-        print("⚠️ Nome dispositivo non fornito. Operazione annullata.")
+        print("Nome dispositivo non fornito. Operazione annullata.")
         return  # Non eseguire l'inserimento se il nome è vuoto
 
     # Se il nome è fornito, chiedi l'indirizzo IP
@@ -410,9 +410,9 @@ def ask_device_details(connection):
             # Se l'IP è valido, inserisci nel database
             insert_device(connection, nome_dispositivo, indirizzo_ip)
         else:
-            print("⚠️ Indirizzo IP non fornito. Operazione annullata.")
+            print("Indirizzo IP non fornito. Operazione annullata.")
     except ValueError:
-        print("⚠️ Indirizzo IP non valido. Riprova.")
+        print("Indirizzo IP non valido. Riprova.")
 
 # Modifica la funzione create_database_and_table per restituire la connessione
 def create_database_and_table(config):
