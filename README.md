@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 7.7.1
+Versione : 8.0
 
 ![logo](/img/logo.png)
 
@@ -13,13 +13,15 @@ Versione : 7.7.1
     - [Pre 6.14](#pre-614)
     - [6.14](#614)
   - [Installazione](#installazione)
-  - [Configurazione](#configurazione)
+  - [Configurazione Manuale](#configurazione-manuale)
     - [Script di controllo 'Creazione Log'](#script-di-controllo-creazione-log)
     - [Script di Archiviazione dei Log](#script-di-archiviazione-dei-log)
     - [Script di verifica del servizio](#script-di-verifica-del-servizio)
     - [NB](#nb)
   - [Utilizzo](#utilizzo)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
+  - [Configurazione tramite Script](#configurazione-tramite-script)
+    - [NB 2](#nb-2)
   - [Test Svolti](#test-svolti)
   - [Futuri Upgrade](#futuri-upgrade)
     - [Già Implementati](#già-implementati)
@@ -27,6 +29,7 @@ Versione : 7.7.1
     - [Versione 4.0 - 4.5](#versione-40---45)
     - [Versione 5.10 - 6.14.5](#versione-510---6145)
     - [Versione 7](#versione-7)
+    - [Versione 8](#versione-8)
   - [Licenza](#licenza)
   - [Autori](#autori)
   - [Contribuire](#contribuire)
@@ -87,7 +90,7 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 
 ---
 
-## Configurazione
+## Configurazione Manuale
 
 Modifica il file [config.py](config.py) allocato nella directory principale del progetto e aggiungi le seguenti configurazioni:
 
@@ -258,6 +261,28 @@ Verifica tramite il comando:
 sudo systemctl status networkallarm.service
 ```
 
+---
+
+## Configurazione tramite Script
+
+Tramite lo script [configure](configure.py) si procede alla configurazione automatica, dove occorre inserire:
+
+- bot_token (Token del Bot)
+- chat_id (ID del canale)
+- ID autorizzati (ID Telegram di chi può usare il bot)
+- Credenziali MySQL (utente e password)
+- Dispositivo da monitorare
+
+Tutte queste informazioni vengono salvate nel file [config.py](config.py).
+
+Questo script effettua il clone di questa repository e verifica eventuali aggiornamenti.
+
+### NB 2
+
+Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM occorre rimuovere la riga 'check_and_install('mysql-server')' ed installato manualmente.
+
+---
+
 ## Test Svolti
 
 I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 con Ubuntu Server.
@@ -343,6 +368,10 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 7.6 : Creazione di uno script che archivia la directory contenente i log del mese precedente per ottimizzare lo spazio disponibile.
 - Versione 7.7 : Creazione di uno script che verifica che il servizio sia attivo, in caso non lo fosse lo avvia automaticamente.
 - Versione 7.7.1 : Bug Fix.
+
+### Versione 8
+
+- Versione 8.0 : Creazione di uno script che automatizzi l'installazione e l'aggiornamento di NetworkAllarm.
 
 <!-- markdownlint-enable MD033 -->
 
