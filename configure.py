@@ -33,6 +33,27 @@ import importlib.util
 import ipaddress
 import getpass
 
+def check_and_stop_service():
+    """Controlla lo stato del servizio networkallarm e lo ferma se è attivo."""
+    try:
+        # Controlla lo stato del servizio
+        status_output = subprocess.check_output(['sudo', 'systemctl', 'status', 'networkallarm'], stderr=subprocess.STDOUT)
+        status_output = status_output.decode('utf-8')  # Decodifica l'output in stringa
+
+        # Controlla se il servizio è attivo
+        if "active (running)" in status_output:
+            print("Il servizio 'networkallarm' è attivo. Fermando il servizio...")
+            subprocess.check_call(['sudo', 'systemctl', 'stop', 'networkallarm'])
+            print("Servizio 'networkallarm' fermato.")
+        else:
+            print("Il servizio 'networkallarm' non è attivo.")
+    except subprocess.CalledProcessError as e:
+        # Se il servizio non esiste o si verifica un errore, gestisci l'eccezione
+        if "Unit networkallarm.service not found" in e.output.decode('utf-8'):
+            print("Il servizio 'networkallarm' non è stato trovato.")
+        else:
+            print(f"Errore durante il controllo dello stato del servizio: {e.output.decode('utf-8')}")
+
 def install_package(package):
     """Installa un pacchetto usando apt."""
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
@@ -437,7 +458,19 @@ def load_config():
     spec.loader.exec_module(config)
     return config
 
+# Punto 16
+def start_service():
+    """Avvia il servizio networkallarm."""
+    try:
+        subprocess.check_call(['sudo', 'systemctl', 'start', 'networkallarm'])
+        print("Servizio 'networkallarm' avviato con successo.")
+    except subprocess.CalledProcessError as e:
+        print(f"Errore durante l'avvio del servizio: {e.output.decode('utf-8')}")
+
 def main():
+    # Controlla e ferma il servizio se attivo
+    check_and_stop_service()
+
     # Verifica e installa git e mysql
     check_and_install('git')
     check_and_install('cron')
@@ -529,5 +562,8 @@ def main():
     print("Abilitando il servizio all'avvio...")
     subprocess.check_call(['sudo', 'systemctl', 'enable', 'networkallarm.service'])
 
+    # Al termine del setup, avvia il servizio
+    start_service()
+    
 if __name__ == "__main__":
     main()
