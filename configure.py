@@ -224,7 +224,7 @@ def update_autorizzati(repo_dir, autorizzati):
             for line in lines:
                 if line.startswith("autorizzati ="):
                     # Scrive la nuova lista degli autorizzati senza apici
-                    autorizzati_str = ', '.join(autorizzati)  # Unisce gli ID autorizzati in una stringa
+                    autorizzati_str = ', '.join(map(str, autorizzati))  # Unisce gli ID autorizzati in una stringa
                     file.write(f"autorizzati = [{autorizzati_str}]\n")  # Formatta come lista senza apici
                 else:
                     file.write(line)  # Scrive le altre righe senza modifiche
@@ -282,6 +282,8 @@ def update_db_credentials(repo_dir, new_user, new_password):
                         file.write(f"DB_PASSWORD = '{new_password}'\n")  # Scrive il nuovo DB_PASSWORD
                     else:
                         file.write(line)  # Mantiene il valore esistente
+                elif line.startswith("DB_NAME ="):
+                    file.write(line)  # Mantiene sempre DB_NAME
                 else:
                     file.write(line)  # Scrive le altre righe senza modifiche
 
@@ -506,6 +508,7 @@ def main():
     request_autorizzati(repo_dir)  # Aggiungi questa chiamata
 
     # Richiesta delle credenziali del database
+    # Richiesta delle credenziali del database
     db_user = input("Inserisci il nome utente del database MySQL (lascia vuoto per mantenere il valore esistente): ")
     db_password1 = getpass.getpass("Inserisci la password del database MySQL (lascia vuoto per mantenere il valore esistente): ")
 
@@ -513,17 +516,11 @@ def main():
     if db_password1:
         while True:
             db_password2 = getpass.getpass("Inserisci nuovamente la password: ")
-            
+
             if db_password1 == db_password2:  # Controlla se le password coincidono
                 break  # Esci dal ciclo se le password coincidono
             else:
                 print("Le password non coincidono. Riprova.")
-
-        # Aggiorna le credenziali del database nel file config.py
-        update_db_credentials(repo_dir, db_user, db_password1)
-    else:
-        # Se db_password1 è vuoto, non chiedere db_password2 e mantieni il valore esistente
-        update_db_credentials(repo_dir, db_user, "")
 
     # Aggiorna le credenziali del database nel file config.py
     update_db_credentials(repo_dir, db_user, db_password1)
