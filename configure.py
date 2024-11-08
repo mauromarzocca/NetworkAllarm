@@ -343,6 +343,11 @@ def insert_device(connection, nome_dispositivo, indirizzo_ip):
         print("⚠️ Connessione al database non disponibile.")
         return
 
+    # Controlla se il nome del dispositivo è vuoto
+    if not nome_dispositivo.strip():
+        print("⚠️ Nome dispositivo non fornito. Operazione annullata.")
+        return  # Non eseguire l'inserimento se il nome è vuoto
+
     try:
         cursor = connection.cursor()
         query = "INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)"
@@ -355,10 +360,17 @@ def insert_device(connection, nome_dispositivo, indirizzo_ip):
         if 'cursor' in locals():
             cursor.close()  # Chiudi il cursore solo se è stato creato
 
-def ask_device_details(connection, config):
+def ask_device_details(connection):
     """Richiede all'utente il nome e l'indirizzo IP del dispositivo da monitorare."""
-    nome_dispositivo = input("Inserisci il nome del dispositivo (lascia vuoto per mantenere il valore esistente): ") or config.Nome
-    indirizzo_ip = input("Inserisci l'indirizzo IP del dispositivo (lascia vuoto per mantenere il valore esistente): ") or config.IP
+    nome_dispositivo = input("Inserisci il nome del dispositivo (lascia vuoto per non aggiungere): ")
+
+    # Se il nome del dispositivo è vuoto, non chiedere l'indirizzo IP
+    if not nome_dispositivo.strip():
+        print("⚠️ Nome dispositivo non fornito. Operazione annullata.")
+        return  # Non eseguire l'inserimento se il nome è vuoto
+
+    # Se il nome è fornito, chiedi l'indirizzo IP
+    indirizzo_ip = input("Inserisci l'indirizzo IP del dispositivo: ")
 
     # Verifica se l'indirizzo IP è valido
     try:
@@ -492,7 +504,7 @@ def main():
 
     if connection:  # Verifica che la connessione sia stata creata
         # Chiedi all'utente di inserire il nome e l'indirizzo IP del dispositivo
-        ask_device_details(connection, config)  # Passa la connessione alla funzione
+        ask_device_details(connection)  # Passa la connessione alla funzione
 
         # Chiudi la connessione dopo aver finito
         connection.close()  # Chiudi la connessione al database
