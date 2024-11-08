@@ -222,7 +222,9 @@ def update_autorizzati(repo_dir, autorizzati):
         with open(config_file_path, 'w') as file:
             for line in lines:
                 if line.startswith("autorizzati ="):
-                    file.write(f"autorizzati = {autorizzati}\n")  # Scrive la nuova lista degli autorizzati
+                    # Scrive la nuova lista degli autorizzati senza apici
+                    autorizzati_str = ', '.join(autorizzati)  # Unisce gli ID autorizzati in una stringa
+                    file.write(f"autorizzati = [{autorizzati_str}]\n")  # Formatta come lista senza apici
                 else:
                     file.write(line)  # Scrive le altre righe senza modifiche
 
@@ -564,6 +566,6 @@ def main():
 
     # Al termine del setup, avvia il servizio
     start_service()
-    
+
 if __name__ == "__main__":
     main()
