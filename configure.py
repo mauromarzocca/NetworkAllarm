@@ -77,13 +77,14 @@ def clone_or_update_repository():
         print(f"La directory {repo_dir} esiste già. Aggiornamento della repository...")
         os.chdir(repo_dir)
         try:
-            subprocess.check_call(['git', 'pull'])
+            subprocess.check_call(['git', 'checkout', 'main'])  # Passa al branch main
+            subprocess.check_call(['git', 'pull', 'origin', 'main'])  # Esegui il pull dal branch main
         except subprocess.CalledProcessError as e:
             print("Errore durante l'aggiornamento della repository. Assicurati di avere i permessi necessari.")
             sys.exit(1)
     else:
-        print(f"Clonazione della repository {repo_url}...")
-        subprocess.check_call(['git', 'clone', repo_url])
+        print(f"Clonazione della repository {repo_url} sul branch main...")
+        subprocess.check_call(['git', 'clone', '-b', 'main', repo_url])  # Clona specificando il branch main
         os.chdir(repo_dir)
         # Aggiungi la directory come sicura
         subprocess.check_call(['git', 'config', '--global', '--add', 'safe.directory', os.getcwd()])
