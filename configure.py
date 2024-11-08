@@ -471,14 +471,23 @@ def main():
 
     # Richiesta delle credenziali del database
     db_user = input("Inserisci il nome utente del database MySQL (lascia vuoto per mantenere il valore esistente): ")
-    while True:
-        db_password1 = getpass.getpass("Inserisci la password del database MySQL (lascia vuoto per mantenere il valore esistente): ")
-        db_password2 = getpass.getpass("Inserisci nuovamente la password: ")
-        
-        if db_password1 == db_password2 or not db_password1:  # Permetti di lasciare vuoto
-            break  # Esci dal ciclo se le password coincidono o se è vuoto
-        else:
-            print("Le password non coincidono. Riprova.")
+    db_password1 = getpass.getpass("Inserisci la password del database MySQL (lascia vuoto per mantenere il valore esistente): ")
+
+    # Se db_password1 non è vuoto, chiedi di reinserirla
+    if db_password1:
+        while True:
+            db_password2 = getpass.getpass("Inserisci nuovamente la password: ")
+            
+            if db_password1 == db_password2:  # Controlla se le password coincidono
+                break  # Esci dal ciclo se le password coincidono
+            else:
+                print("Le password non coincidono. Riprova.")
+
+        # Aggiorna le credenziali del database nel file config.py
+        update_db_credentials(repo_dir, db_user, db_password1)
+    else:
+        # Se db_password1 è vuoto, non chiedere db_password2 e mantieni il valore esistente
+        update_db_credentials(repo_dir, db_user, "")
 
     # Aggiorna le credenziali del database nel file config.py
     update_db_credentials(repo_dir, db_user, db_password1)
