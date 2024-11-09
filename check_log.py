@@ -27,8 +27,7 @@ async def main():
             # Invia un messaggio
         await invia_messaggio("Generazione esterna", chat_id)  # Usa await
     else:
-        #await invia_messaggio("File già creato", chat_id)
-        print("Il file di log è già stato creato. Ignoro lo script.")
+        print(f"Il file di log esiste già: {log_file_path}. Ignoro lo script.")
 
 # Esegui la funzione principale
 if __name__ == "__main__":
