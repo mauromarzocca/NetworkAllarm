@@ -2,32 +2,21 @@ import os
 import asyncio
 from datetime import datetime
 from main import invia_messaggio  # Importa la funzione dal main.py
-from config import chat_id  # Importa il chat_id dal file di configurazione
-
-# Configurazione della directory di log
-base_log_directory = 'log'  # Cambia questo percorso se necessario
-today_date = datetime.now()
-year = today_date.strftime('%Y')
-month = today_date.strftime('%m')
-day = today_date.strftime('%d')
-log_directory = os.path.join(base_log_directory, year, month)
-
-# Assicurati che la directory di log esista
-os.makedirs(log_directory, exist_ok=True)
-
-log_file_path = os.path.join(log_directory, f"{today_date.strftime('%Y-%m-%d')}.txt")
+from config import chat_id, cartella_log, nome_file  # Importa chat_id e le variabili di configurazione
 
 async def main():
     # Verifica se il file di log esiste
-    if not os.path.exists(log_file_path):
-        # Se il file non esiste, scrivi nel log
-        with open(log_file_path, 'a') as log_file:
+    if not os.path.exists(nome_file):
+        # Se il file non esiste, crea la directory se non esiste
+        os.makedirs(cartella_log, exist_ok=True)
+        # Scrivi nel file di log
+        with open(nome_file, 'a') as log_file:
             orario = datetime.now().strftime('%H:%M:%S')
-            log_file.write(f"{orario} - Generazione Esterna\n")
+            log_file.write(f"{orario} - Generazione esterna\n")
             # Invia un messaggio
         await invia_messaggio("Generazione esterna", chat_id)  # Usa await
     else:
-        print(f"Il file di log esiste già: {log_file_path}. Ignoro lo script.")
+        print(f"Il file di log esiste già: {nome_file}. Ignoro lo script.")
 
 # Esegui la funzione principale
 if __name__ == "__main__":
