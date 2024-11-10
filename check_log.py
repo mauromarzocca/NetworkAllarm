@@ -2,13 +2,29 @@ import os
 import asyncio
 from datetime import datetime
 from main import invia_messaggio  # Importa la funzione dal main.py
-from config import chat_id, cartella_log, nome_file  # Importa chat_id e le variabili di configurazione
+from config import chat_id  # Importa chat_id dalla configurazione
+
+# Ottieni la directory in cui si trova il file attuale
+current_dir = os.path.dirname(__file__)
+log_base_dir = os.path.join(current_dir, 'log')  # Specifica la cartella base dei log
+
+# Ottieni la data corrente
+oggi = datetime.now()
+anno = oggi.strftime('%Y')
+mese = oggi.strftime('%m')
+giorno = oggi.strftime('%d')
+
+# Crea il percorso completo per il file di log
+cartella_anno = os.path.join(log_base_dir, anno)
+cartella_mese = os.path.join(cartella_anno, mese)
+nome_file = os.path.join(cartella_mese, f"{anno}-{mese}-{giorno}.txt")
 
 async def main():
+    # Verifica se la cartella per l'anno esiste, altrimenti creala
+    os.makedirs(cartella_mese, exist_ok=True)
+
     # Verifica se il file di log esiste
     if not os.path.exists(nome_file):
-        # Se il file non esiste, crea la directory se non esiste
-        os.makedirs(cartella_log, exist_ok=True)
         # Scrivi nel file di log
         with open(nome_file, 'a') as log_file:
             orario = datetime.now().strftime('%H:%M:%S')
