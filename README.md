@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.0
+Versione : 8.1
 
 ![logo](/img/logo.png)
 
@@ -372,6 +372,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 ### Versione 8
 
 - Versione 8.0 : Creazione di uno script che automatizzi l'installazione e l'aggiornamento di NetworkAllarm.
+- Versione 8.1 : Ottimizzazione generale del codice.
 
 <!-- markdownlint-enable MD033 -->
 

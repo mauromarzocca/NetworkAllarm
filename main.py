@@ -464,7 +464,7 @@ def get_custom_keyboard():
         KeyboardButton("⚙️ Aggiungi Dispositivo"),
         KeyboardButton("⚙️ Modifica Dispositivo"),
         KeyboardButton("⚙️ Rimuovi Dispositivo"),
-        KeyboardButton("/start")  # Aggiungi questo pulsante
+        KeyboardButton("☑️ Start")  # Aggiungi questo pulsante
     ]
     
     return ReplyKeyboardMarkup([
@@ -613,7 +613,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif text == "⚙️ Rimuovi Dispositivo":
         await rimuovi_dispositivo(update, context)
-    elif text == "/start":
+    elif text == "☑️ Start":
         await start(update, context)
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):

@@ -2,33 +2,37 @@ import os
 import asyncio
 from datetime import datetime
 from main import invia_messaggio  # Importa la funzione dal main.py
-from config import chat_id  # Importa il chat_id dal file di configurazione
+from config import chat_id  # Importa chat_id dalla configurazione
 
-# Configurazione della directory di log
-base_log_directory = 'log'  # Cambia questo percorso se necessario
-today_date = datetime.now()
-year = today_date.strftime('%Y')
-month = today_date.strftime('%m')
-day = today_date.strftime('%d')
-log_directory = os.path.join(base_log_directory, year, month)
+# Ottieni la directory in cui si trova il file attuale
+current_dir = os.path.dirname(__file__)
+log_base_dir = os.path.join(current_dir, 'log')  # Specifica la cartella base dei log
 
-# Assicurati che la directory di log esista
-os.makedirs(log_directory, exist_ok=True)
+# Ottieni la data corrente
+oggi = datetime.now()
+anno = oggi.strftime('%Y')
+mese = oggi.strftime('%m')
+giorno = oggi.strftime('%d')
 
-log_file_path = os.path.join(log_directory, f"{today_date.strftime('%Y-%m-%d')}.txt")
+# Crea il percorso completo per il file di log
+cartella_anno = os.path.join(log_base_dir, anno)
+cartella_mese = os.path.join(cartella_anno, mese)
+nome_file = os.path.join(cartella_mese, f"{anno}-{mese}-{giorno}.txt")
 
 async def main():
+    # Verifica se la cartella per l'anno esiste, altrimenti creala
+    os.makedirs(cartella_mese, exist_ok=True)
+
     # Verifica se il file di log esiste
-    if not os.path.exists(log_file_path):
-        # Se il file non esiste, scrivi nel log
-        with open(log_file_path, 'a') as log_file:
+    if not os.path.exists(nome_file):
+        # Scrivi nel file di log
+        with open(nome_file, 'a') as log_file:
             orario = datetime.now().strftime('%H:%M:%S')
-            log_file.write(f"{orario} - Generazione Esterna\n")
+            log_file.write(f"{orario} - Generazione esterna\n")
             # Invia un messaggio
         await invia_messaggio("Generazione esterna", chat_id)  # Usa await
     else:
-        #await invia_messaggio("File già creato", chat_id)
-        print("Il file di log è già stato creato. Ignoro lo script.")
+        print(f"Il file di log esiste già: {nome_file}. Ignoro lo script.")
 
 # Esegui la funzione principale
 if __name__ == "__main__":
