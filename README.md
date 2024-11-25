@@ -12,6 +12,7 @@ Versione : 8.1.1
   - [Anteprima](#anteprima)
     - [Pre 6.14](#pre-614)
     - [6.14](#614)
+    - [8.1](#81)
   - [Installazione](#installazione)
   - [Configurazione Manuale](#configurazione-manuale)
     - [Script di controllo 'Creazione Log'](#script-di-controllo-creazione-log)
@@ -65,6 +66,19 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 ---
 
 ![preview](/img/6.14.5%20desktop.png)
+
+</div>
+
+### 8.1
+
+<!-- markdownlint-disable MD033 -->
+<div align=center>
+
+![preview](/img/8.1%20minor.jpeg)
+
+---
+
+![preview](/img/)
 
 </div>
 <!-- markdownlint-enable MD033 -->
