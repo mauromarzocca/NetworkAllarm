@@ -8,8 +8,8 @@ from main import scrivi_log, invia_messaggio  # Importa le funzioni dal file mai
 
 def archivia_directory(mese, anno):
     # Costruisci il percorso della directory da archiviare
-    cartella_log = f"log/{anno}/{mese:02d}"
-    archivio_nome = f"log/{anno}/{mese:02d}.zip"
+    cartella_log = os.path.join(os.path.dirname(__file__), 'log', str(anno), f"{mese:02d}")
+    archivio_nome = os.path.join(os.path.dirname(__file__), 'log', str(anno), f"{mese:02d}.zip")
 
     # Liste per i messaggi
     messaggi_archiviati = []
@@ -82,4 +82,6 @@ def archivia_mesi_precedenti():
         scrivi_log("Rimozione", messaggio_rimozione.strip())  # Scrivi nel log
 
 if __name__ == "__main__":
+    print("Inizio dell'esecuzione di archive_log.py")
     archivia_mesi_precedenti()  # Corretto: rimosso lo spazio
+    print("Fine dell'esecuzione di archive_log.py")
