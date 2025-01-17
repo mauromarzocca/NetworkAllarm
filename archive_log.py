@@ -31,6 +31,7 @@ def archivia_directory(mese, anno):
     # Non fare nulla se la directory non esiste o se l'archivio esiste già
     return messaggi_archiviati, messaggi_rimossi
 
+
 def archivia_mesi_precedenti():
     oggi = datetime.now()
     mese_corrente = oggi.month
@@ -40,35 +41,17 @@ def archivia_mesi_precedenti():
     tutti_archiviati = []
     tutti_rimossi = []
 
-    # Se è febbraio, archivia anche febbraio dell'anno precedente
-    if mese_corrente == 2:
-        archiviati, rimossi = archivia_directory(2, anno_corrente - 1)
-        tutti_archiviati.extend(archiviati)
-        tutti_rimossi.extend(rimossi)
-
-    # Archivia il mese corrente se è gennaio
+    # Se il mese corrente è gennaio, archivia dicembre dell'anno precedente
     if mese_corrente == 1:
-        archiviati, rimossi = archivia_directory(1, anno_corrente)
+        archiviati, rimossi = archivia_directory(12, anno_corrente - 1)
         tutti_archiviati.extend(archiviati)
         tutti_rimossi.extend(rimossi)
-
-    # Archivia il mese precedente
-    mese_precedente = mese_corrente - 1
-    anno_precedente = anno_corrente
-
-    if mese_precedente == 0:
-        mese_precedente = 12
-        anno_precedente -= 1
-
-    archiviati, rimossi = archivia_directory(mese_precedente, anno_precedente)
-    tutti_archiviati.extend(archiviati)
-    tutti_rimossi.extend(rimossi)
-
-    # Archivia i mesi precedenti se non sono stati archiviati
-    for mese in range(1, mese_precedente):
-        archiviati, rimossi = archivia_directory(mese, anno_precedente)
-        tutti_archiviati.extend(archiviati)
-        tutti_rimossi.extend(rimossi)
+    else:
+        # Archivia i mesi precedenti dell'anno corrente
+        for mese in range(1, mese_corrente):
+            archiviati, rimossi = archivia_directory(mese, anno_corrente)
+            tutti_archiviati.extend(archiviati)
+            tutti_rimossi.extend(rimossi)
 
     # Invia messaggi finali tramite Telegram solo se ci sono archiviati o rimossi
     if tutti_archiviati:
@@ -83,5 +66,5 @@ def archivia_mesi_precedenti():
 
 if __name__ == "__main__":
     print("Inizio dell'esecuzione di archive_log.py")
-    archivia_mesi_precedenti()  # Corretto: rimosso lo spazio
+    archivia_mesi_precedenti()
     print("Fine dell'esecuzione di archive_log.py")
