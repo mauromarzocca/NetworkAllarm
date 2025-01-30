@@ -299,7 +299,7 @@ Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM
 
 ## Test Svolti
 
-I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 con Ubuntu Server.
+I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 e 4 con Ubuntu Server.
 
 ---
 
