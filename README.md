@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.1.3
+Versione : 8.2
 
 ![logo](/img/logo.png)
 
@@ -299,7 +299,7 @@ Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM
 
 ## Test Svolti
 
-I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 con Ubuntu Server.
+I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 e 4 con Ubuntu Server.
 
 ---
 
@@ -390,6 +390,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.1.1 : Bug Fix.
 - Versione 8.1.2 : Migliorata Documentazione.
 - Versione 8.1.3 : Bug Fix allo script 'Archive Log'.
+- Versione 8.2 : Creazione degli script di [Backup](./backup.py) e di [Restore](./restore.py).
 
 <!-- markdownlint-enable MD033 -->
 
