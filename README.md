@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.2.1
+Versione : 8.2.2
 
 ![logo](/img/logo.png)
 
@@ -392,6 +392,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.1.3 : Bug Fix allo script 'Archive Log'.
 - Versione 8.2 : Creazione degli script di [Backup](./backup.py) e di [Restore](./restore.py).
 - Versione 8.2.1 : Miglioramento dello script ["restore"](./restore.py).
+- Versione 8.2.2 : Miglioramento dello script ["backup"](./backup.py), nello specifico aggiunto il trasferimento in un altro host.
 
 <!-- markdownlint-enable MD033 -->
 
