@@ -269,10 +269,9 @@ async def invia_contenuto_file():
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
         numero_servizi = sum(1 for line in contenuto_file if "Servizio avviato" in line)
 
-
-        # Escludo le stringhe di inizio e fine giornata e "Avvio dello script" se presenti (case-insensitive)
+        # Escludo le stringhe di inizio e fine giornata, "Avvio dello script" e "Generazione Esterna" se presenti (case-insensitive)
         contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
-            excl in line.lower() for excl in ["inizio giornata", "avvio dello script", "servizio avviato"])]
+            excl in line.lower() for excl in ["inizio giornata", "avvio dello script", "servizio avviato", "generazione esterna"])]
 
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
@@ -281,7 +280,7 @@ async def invia_contenuto_file():
             numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
             if numero_avvii > 1:
                 await invia_messaggio(f"Avvio dello script: {numero_avvii}", config.chat_id)
-            numero_servizi = sum(1 for line in contenuto_file if "Avvio dello script" in line)
+            numero_servizi = sum(1 for line in contenuto_file if "Servizio avviato" in line)
             if numero_servizi > 0:
                 await invia_messaggio(f"Servizio Avviato: {numero_servizi}", config.chat_id)
         else:
