@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.2.2
+Versione : 8.2.3
 
 ![logo](/img/logo.png)
 
@@ -393,6 +393,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.2 : Creazione degli script di [Backup](./backup.py) e di [Restore](./restore.py).
 - Versione 8.2.1 : Miglioramento dello script ["restore"](./restore.py).
 - Versione 8.2.2 : Miglioramento dello script ["backup"](./backup.py), nello specifico aggiunto il trasferimento in un altro host. Tuttavia, nel caso in cui non si voglia questa funzione, è presente questo [file](./backup_no_transfer.py).
+- Versione 8.2.3 : Risolta problematica relativa alla generazione esterna del file di log.
 
 <!-- markdownlint-enable MD033 -->
 
