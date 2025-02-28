@@ -18,9 +18,7 @@ DB_USER = config.DB_USER
 DB_PASSWORD = config.DB_PASSWORD
 
 def create_database_if_not_exists():
-    """
-    Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
-    """
+    #Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
     try:
         # Connessione iniziale senza specificare il database
         cnx = mysql.connector.connect(
@@ -46,10 +44,8 @@ def create_database_if_not_exists():
         exit(1)
 
 def import_addresses(cursor):
-    """
-    Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
-    Se un record esiste già, aggiorna il nome e l'indirizzo IP.
-    """
+    #Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
+    #Se un record esiste già, aggiorna il nome e l'indirizzo IP.
     for indirizzo in config.indirizzi_ping:
         try:
             query = """
@@ -62,9 +58,7 @@ def import_addresses(cursor):
             print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
 
 def renumber_ids(cursor):
-    """
-    Rinumerare gli ID della tabella monitor per renderli sequenziali.
-    """
+    #Rinumerare gli ID della tabella monitor per renderli sequenziali.
     try:
         cursor.execute("SET @count = 0;")
         cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
@@ -74,9 +68,7 @@ def renumber_ids(cursor):
         print(f"Errore durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
-    """
-    Crea la tabella monitor all'interno del database NetworkAllarm.
-    """
+    #Crea la tabella monitor all'interno del database NetworkAllarm.
     try:
         # Prima assicurati che il database esista
         create_database_if_not_exists()
@@ -970,7 +962,6 @@ def main():
     modalita_manutenzione = all(result[0] for result in results)
 
     # Aggiungi un dizionario globale per tenere traccia delle notifiche inviate
-    notifiche_inviate = {}
 
     async def monitoraggio():
         global allarme_attivo
