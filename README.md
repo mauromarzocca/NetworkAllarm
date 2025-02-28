@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.2.3
+Versione : 8.3
 
 ![logo](/img/logo.png)
 
