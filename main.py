@@ -1017,7 +1017,7 @@ def main():
                         # Controlla se il dispositivo era online prima
                         if stato_precedente is not None and stato_precedente:  # Solo se era online prima
                             # Controlla se la notifica è già stata inviata
-                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > 300:
+                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > 600:
                                 print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                 await invia_messaggio(
                                     f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
@@ -1028,7 +1028,7 @@ def main():
                                 ultima_notifica[indirizzo_ip] = datetime.now()
                         else:
                             # Se il dispositivo era già offline e non è stata inviata una notifica negli ultimi 5 minuti
-                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > 300:
+                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > 600:
                                 print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                 await invia_messaggio(
                                     f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
