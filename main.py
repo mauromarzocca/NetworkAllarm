@@ -976,6 +976,7 @@ def main():
         global allarme_attivo
         stato_precedente_connessioni = {}
         ultima_notifica = {}
+        ultima_notifica_tutti_offline = datetime.now()
         
         while True:
             if not modalita_manutenzione:
@@ -1056,14 +1057,22 @@ def main():
                 #    await invia_messaggio("⚠️ Avviso: Tutti i dispositivi sono offline!", config.chat_id)
                 #    await asyncio.sleep(60)
 
-                # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
+                # Invia una notifica ogni 5 minuti se tutti i dispositivi sono offline.
                 if allarme_attivo and not dispositivi_in_manutenzione:
-                    await invia_messaggio(
-                        "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
-                        config.chat_id)
+                    print("Tutti i dispositivi sono offline e non sono in manutenzione")
+                    if (datetime.now() - ultima_notifica_tutti_offline).total_seconds() > 300:
+                        print("È passato più di 5 minuti dall'ultima notifica")
+                        await invia_messaggio(
+                            "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
+                            config.chat_id
+                        )
+                        print("Messaggio inviato")
+                        ultima_notifica_tutti_offline = datetime.now()
+                    else:
+                        print("Non è ancora passato abbastanza tempo dall'ultima notifica")
 
-            await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
-            await invia_file_testuale()
+                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+                await invia_file_testuale()
 
     async def avvio_monitoraggio():
         await monitoraggio()
