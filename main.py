@@ -18,9 +18,7 @@ DB_USER = config.DB_USER
 DB_PASSWORD = config.DB_PASSWORD
 
 def create_database_if_not_exists():
-    """
-    Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
-    """
+    #Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
     try:
         # Connessione iniziale senza specificare il database
         cnx = mysql.connector.connect(
@@ -46,10 +44,8 @@ def create_database_if_not_exists():
         exit(1)
 
 def import_addresses(cursor):
-    """
-    Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
-    Se un record esiste già, aggiorna il nome e l'indirizzo IP.
-    """
+    #Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
+    #Se un record esiste già, aggiorna il nome e l'indirizzo IP.
     for indirizzo in config.indirizzi_ping:
         try:
             query = """
@@ -62,9 +58,7 @@ def import_addresses(cursor):
             print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
 
 def renumber_ids(cursor):
-    """
-    Rinumerare gli ID della tabella monitor per renderli sequenziali.
-    """
+    #Rinumerare gli ID della tabella monitor per renderli sequenziali.
     try:
         cursor.execute("SET @count = 0;")
         cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
@@ -74,9 +68,7 @@ def renumber_ids(cursor):
         print(f"Errore durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
-    """
-    Crea la tabella monitor all'interno del database NetworkAllarm.
-    """
+    #Crea la tabella monitor all'interno del database NetworkAllarm.
     try:
         # Prima assicurati che il database esista
         create_database_if_not_exists()
@@ -970,11 +962,13 @@ def main():
     modalita_manutenzione = all(result[0] for result in results)
 
     # Aggiungi un dizionario globale per tenere traccia delle notifiche inviate
-    notifiche_inviate = {}
 
     async def monitoraggio():
         global allarme_attivo
+        tutti_offline = False
         stato_precedente_connessioni = {}
+        ultima_notifica = {}
+        ultima_notifica_tutti_offline = datetime.now()
         
         while True:
             if not modalita_manutenzione:
@@ -992,7 +986,7 @@ def main():
                 for nome_dispositivo, indirizzo_ip in dispositivi:
                     tentativi = 0
                     
-                    while tentativi < 3:
+                    while tentativi < 2:
                         connessione_attuale = controlla_connessione(indirizzo_ip)
                         stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
                         
@@ -1005,8 +999,9 @@ def main():
                                     )
                                     scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
                                 # Rimuovi la notifica di offline se era stata inviata
-                                notifiche_inviate.pop(indirizzo_ip, None)
+                                ultima_notifica.pop(indirizzo_ip, None)
                             stato_precedente_connessioni[indirizzo_ip] = True
+                            tutti_offline = False
                             break
                         else:
                             tentativi += 1
@@ -1016,51 +1011,50 @@ def main():
                         # Controlla se il dispositivo era online prima
                         if stato_precedente is not None and stato_precedente:  # Solo se era online prima
                             # Controlla se la notifica è già stata inviata
-                            if indirizzo_ip not in notifiche_inviate:
-                                print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
-                                await invia_messaggio(
-                                    f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
-                                    config.chat_id
-                                )
-                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
-                                notifiche_inviate[indirizzo_ip] = True
-                        stato_precedente_connessioni[indirizzo_ip] = False
+                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > 600:
+                                if not tutti_offline:
+                                    print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                                    await invia_messaggio(
+                                        f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                        config.chat_id
+                                    )
+                                    scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                    # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
+                                    ultima_notifica[indirizzo_ip] = datetime.now()
+                            else:
+                                # Se il dispositivo era già offline e non è stata inviata una notifica negli ultimi 5 minuti
+                                if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > 600:
+                                    if not tutti_offline:
+                                        print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                                        await invia_messaggio(
+                                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                            config.chat_id
+                                        )
+                                        #scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                        # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
+                                        ultima_notifica[indirizzo_ip] = datetime.now()
+                            stato_precedente_connessioni[indirizzo_ip] = False
 
-                    if not connessione_attuale and stato_precedente and (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
-                        # Se il dispositivo è offline e non è in manutenzione, invia la notifica solo se non è già stato notificato
-                        if indirizzo_ip not in notifiche_inviate:
-                            await invia_messaggio(
-                                f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
-                                config.chat_id
-                            )
-                            scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                            notifiche_inviate[indirizzo_ip] = True
-
-                    # Se almeno un dispositivo è online, non attiviamo l'allarme.
-                    if connessione_attuale:
-                        tutti_offline = False
-
-                # Se tutti i dispositivi sono offline e l'allarme non è già attivo.
                 if tutti_offline and not allarme_attivo:
                     allarme_attivo = True
-
-                # Se almeno un dispositivo è online e l'allarme è attivo.
+                    print("Allarme attivo")
                 elif not tutti_offline and allarme_attivo:
                     allarme_attivo = False
+                    print("Allarme disattivo")
 
-                # Invia una notifica ogni 60 secondi se l'allarme è attivo.
-                #if allarme_attivo:
-                #    await invia_messaggio("⚠️ Avviso: Tutti i dispositivi sono offline!", config.chat_id)
-                #    await asyncio.sleep(60)
-
-                # Invia una notifica ogni 60 secondi se tutti i dispositivi sono offline.
                 if allarme_attivo and not dispositivi_in_manutenzione:
-                    await invia_messaggio(
-                        "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
-                        config.chat_id)
+                    if (datetime.now() - ultima_notifica_tutti_offline).total_seconds() > 300:
+                        print("È passato più di 5 minuti dall'ultima notifica")
+                        await invia_messaggio(
+                            "🚨 Tutti i dispositivi sono offline! Controllare immediatamente!",
+                            config.chat_id
+                        )
+                        print("Messaggio inviato")
+                        ultima_notifica_tutti_offline = datetime.now()
+                    else:
+                        print("Non è ancora passato abbastanza tempo dall'ultima notifica")
 
-            await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo.
+            await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
             await invia_file_testuale()
 
     async def avvio_monitoraggio():
