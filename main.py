@@ -994,7 +994,7 @@ def main():
                             if stato_precedente is False:  # Se prima era offline e ora è online
                                 if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                                     await invia_messaggio(
-                                        f"✅ La connessione Ethernet è ripristinata tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                        f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
                                         config.chat_id
                                     )
                                     scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
@@ -1015,7 +1015,7 @@ def main():
                                 if not tutti_offline:
                                     print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                     await invia_messaggio(
-                                        f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                        f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
                                         config.chat_id
                                     )
                                     scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
@@ -1027,7 +1027,7 @@ def main():
                                     if not tutti_offline:
                                         print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                         await invia_messaggio(
-                                            f"⚠️ Avviso: la connessione Ethernet è persa tramite {nome_dispositivo} ({indirizzo_ip}). ",
+                                            f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
                                             config.chat_id
                                         )
                                         #scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
