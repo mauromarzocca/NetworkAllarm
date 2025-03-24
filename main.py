@@ -1017,9 +1017,12 @@ def main():
                                     f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
                                     config.chat_id
                                 )
-                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                                 # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
                                 ultima_notifica[indirizzo_ip] = datetime.now()
+                                # Scrivi il log solo se è la prima volta
+                                if stato_precedente_connessioni.get(indirizzo_ip, True):
+                                    scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                    stato_precedente_connessioni[indirizzo_ip] = False
                             else:
                                 # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
                                 pass
@@ -1033,9 +1036,12 @@ def main():
                                 f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
                                 config.chat_id
                             )
-                            scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                             # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
                             ultima_notifica[indirizzo_ip] = datetime.now()
+                            # Scrivi il log solo se è la prima volta
+                            if stato_precedente_connessioni.get(indirizzo_ip, True):
+                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                stato_precedente_connessioni[indirizzo_ip] = False
 
                 if tutti_offline and not allarme_attivo:
                     allarme_attivo = True
