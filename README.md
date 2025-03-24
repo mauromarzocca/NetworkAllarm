@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.3.1
+Versione : 8.3.2
 
 ![logo](/img/logo.png)
 
@@ -396,6 +396,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.2.3 : Risolta problematica relativa alla generazione esterna del file di log.
 - Versione 8.3 : Miglioramento della gestione degli allarmi.
 - Versione 8.3.1 : Risolto un problema relativo al pulsante "Start".
+- Versione 8.3.2 : Risolte problematiche relativo all'invio delle notifiche.
 
 <!-- markdownlint-enable MD033 -->
 
