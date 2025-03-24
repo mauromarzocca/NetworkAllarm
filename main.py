@@ -472,7 +472,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = query.message.chat_id
     else:
         chat_id = update.effective_chat.id
-
+    
+    query = update.callback_query
     await query.answer()
     
     if query.data == 'inizio_manutenzione' and not modalita_manutenzione:
@@ -546,25 +547,27 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = query.data.split("_")
         conferma = parts[2]
         nome_dispositivo = parts[3]
-        nuovo_indirizzo_ip = parts[4]
+        indirizzo_ip = parts[4]
 
         if conferma == "si":
             # Aggiungi il dispositivo al database in stato di manutenzione
             cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
             cursor = cnx.cursor()
             query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)")
-            cursor.execute(query, (nome_dispositivo, nuovo_indirizzo_ip, True))
+            cursor.execute(query, (nome_dispositivo, indirizzo_ip, True))
             cnx.commit()
             cursor.close()
             cnx.close()
 
             # Aggiorna la variabile globale dispositivi_in_manutenzione
             global dispositivi_in_manutenzione
-            dispositivi_in_manutenzione.add((nome_dispositivo, nuovo_indirizzo_ip))
+            dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))
 
-            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) aggiunto con successo in stato di manutenzione!", update.effective_chat.id)
+            scrivi_log(f"Dispositivo aggiunto in manutenzione: {nome_dispositivo} - {indirizzo_ip}")
+
+            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo in stato di manutenzione!", update.effective_chat.id)
         elif conferma == "no":
-            await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({nuovo_indirizzo_ip}) annullata.", update.effective_chat.id)
+            await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", update.effective_chat.id)
     
     elif query.data.startswith("conferma_modifica_si_"):
         parts = query.data.split("_")
@@ -688,6 +691,10 @@ async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DE
     await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
     context.user_data['azione'] = 'aggiungi_dispositivo_nome'
 
+async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
+    context.user_data['azione'] = 'aggiungi_dispositivo_nome'
+
 async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     azione = context.user_data.get('azione')
     if azione == 'aggiungi_dispositivo_nome':
@@ -745,6 +752,9 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cnx.close()
 
         scrivi_log(f"Aggiunto Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
+        if stato_manutenzione:
+            scrivi_log(f"Dispositivo aggiunto in manutenzione: {nome_dispositivo} - {indirizzo_ip}")
+
         await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo!", update.effective_chat.id)
 
         context.user_data['azione'] = None
