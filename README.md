@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.3.3
+Versione : 8.4
 
 ![logo](/img/logo.png)
 
@@ -23,6 +23,7 @@ Versione : 8.3.3
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
   - [Configurazione tramite Script](#configurazione-tramite-script)
     - [NB 2](#nb-2)
+  - [Script di Aggiornamento](#script-di-aggiornamento)
   - [Test Svolti](#test-svolti)
   - [Futuri Upgrade](#futuri-upgrade)
     - [Già Implementati](#già-implementati)
@@ -297,6 +298,13 @@ Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM
 
 ---
 
+## Script di Aggiornamento
+
+É stato introdotto uno script di aggiornamento, il cui compito è quello di arrestare il servizio, eseguire una copia del file main.py, rimuovere il file e permette l'inserimento del codice completo.
+Questo script deve essere eseguito con i permessi di amministratore.
+
+---
+
 ## Test Svolti
 
 I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 e 4 con Ubuntu Server.
@@ -398,6 +406,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.3.1 : Risolto un problema relativo al pulsante "Start".
 - Versione 8.3.2 : Risolte problematiche relativo all'invio delle notifiche.
 - Versione 8.3.3 : Risolte problematiche relative all'aggiunta di un dispositivo in Maintenence Mode.
+- Versione 8.4 : Creazione dello script di [aggiornamento](./upgrade.py) automatico.
 
 <!-- markdownlint-enable MD033 -->
 
