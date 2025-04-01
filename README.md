@@ -23,6 +23,7 @@ Versione : 8.4
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
   - [Configurazione tramite Script](#configurazione-tramite-script)
     - [NB 2](#nb-2)
+  - [Script di Aggiornamento](#script-di-aggiornamento)
   - [Test Svolti](#test-svolti)
   - [Futuri Upgrade](#futuri-upgrade)
     - [Già Implementati](#già-implementati)
@@ -294,6 +295,13 @@ Questo script effettua il clone di questa repository e verifica eventuali aggior
 ### NB 2
 
 Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM occorre rimuovere la riga 'check_and_install('mysql-server')' ed installato manualmente.
+
+---
+
+## Script di Aggiornamento
+
+É stato introdotto uno script di aggiornamento, il cui compito è quello di arrestare il servizio, eseguire una copia del file main.py, rimuovere il file e permette l'inserimento del codice completo.
+Questo script deve essere eseguito con i permessi di amministratore.
 
 ---
 
