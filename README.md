@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.3.3
+Versione : 8.4
 
 ![logo](/img/logo.png)
 
@@ -398,6 +398,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.3.1 : Risolto un problema relativo al pulsante "Start".
 - Versione 8.3.2 : Risolte problematiche relativo all'invio delle notifiche.
 - Versione 8.3.3 : Risolte problematiche relative all'aggiunta di un dispositivo in Maintenence Mode.
+- Versione 8.4 : Creazione dello script di [aggiornamento](./upgrade.py) automatico.
 
 <!-- markdownlint-enable MD033 -->
 
