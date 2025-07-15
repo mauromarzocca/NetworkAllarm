@@ -11,6 +11,7 @@ import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import mysql.connector
 import ipaddress
+import paramiko
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -443,7 +444,11 @@ def get_keyboard():
         InlineKeyboardButton("🔧 Modifica Dispositivo", callback_data='modifica_dispositivo'),
         InlineKeyboardButton("⚙️ Rimuovi Dispositivo", callback_data='rimuovi_dispositivo')
     ]
-    return InlineKeyboardMarkup([button_list_row1, button_list_row2, button_list_row3, button_list_row4])
+    button_list_row5 = [
+        InlineKeyboardButton("🖥️ System Advance", callback_data='system_advance')
+    ]
+    return InlineKeyboardMarkup([button_list_row1, button_list_row2, button_list_row3, button_list_row4, button_list_row5])
+
 
 def get_custom_keyboard():
     button_list = [
@@ -455,6 +460,7 @@ def get_custom_keyboard():
         KeyboardButton("⚙️ Aggiungi Dispositivo"),
         KeyboardButton("⚙️ Modifica Dispositivo"),
         KeyboardButton("⚙️ Rimuovi Dispositivo"),
+        KeyboardButton("🖥️ System Advance"),
         KeyboardButton("☑️ Start")  # Aggiungi questo pulsante
     ]
     
@@ -463,7 +469,8 @@ def get_custom_keyboard():
         button_list[2:4], 
         button_list[4:6], 
         button_list[6:8],
-        [button_list[8]]  # Aggiungi il pulsante /start in una nuova riga
+        button_list[8:10]  # System Advance e Start
+        #[button_list[8]]  # Aggiungi il pulsante /start in una nuova riga
     ], resize_keyboard=True)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -490,6 +497,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
+    elif query.data.startswith("system_advance_info_"):
+        parts = query.data.split("_")
+        nome_dispositivo = parts[3]
+        indirizzo_ip = parts[4]
+        await invia_info_avanzate(update, context, nome_dispositivo, indirizzo_ip)
     elif query.data.startswith("rimuovi_"):
         parts = query.data.split("_")
         nome_dispositivo = parts[1]
@@ -590,7 +602,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    
+
     if text == "🔧 Inizio Manutenzione":
         await avvia_manutenzione(update, context)
     elif text == "✅ Fine Manutenzione":
@@ -609,6 +621,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await rimuovi_dispositivo(update, context)
     elif text == "☑️ Start":
         await start(update, context)
+    elif text == "🖥️ System Advance":  
+        await system_advance_menu(update, context)
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
@@ -662,6 +676,23 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
 
     await invia_messaggio("Dove vuoi gestire la manutenzione?", update.message.chat_id, reply_markup=keyboard)
 
+async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Nome, IP FROM monitor")
+    cursor.execute(query)
+    dispositivi = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
+    pulsanti = []
+    for dispositivo in dispositivi:
+        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"system_advance_info_{dispositivo[0]}_{dispositivo[1]}"))
+    keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
+
+    await invia_messaggio("Seleziona il dispositivo per informazioni avanzate:", chat_id, reply_markup=keyboard)
+
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stati_connessioni = []
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -695,6 +726,16 @@ async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DE
 async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
     context.user_data['azione'] = 'aggiungi_dispositivo_nome'
+
+async def invia_info_avanzate(update: Update, context: ContextTypes.DEFAULT_TYPE, nome_dispositivo, indirizzo_ip):
+    chat_id = update.effective_chat.id
+    # Chiedi sempre l'username prima di tentare la connessione
+    context.user_data['system_advance'] = {
+        'fase': 'username',
+        'nome_dispositivo': nome_dispositivo,
+        'indirizzo_ip': indirizzo_ip
+    }
+    await invia_messaggio("Inserisci l'username per la connessione SSH:", chat_id)
 
 async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     azione = context.user_data.get('azione')
@@ -861,6 +902,72 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) eliminato con successo!", update.effective_chat.id)
 
         context.user_data['azione'] = None
+    
+    if 'system_advance' in context.user_data:
+        fase = context.user_data['system_advance']['fase']
+        if fase == 'username':
+            context.user_data['system_advance']['username'] = update.message.text
+            context.user_data['system_advance']['fase'] = 'tentativo_chiave'
+            # Tenta la connessione solo con chiave
+            nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
+            indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
+            username = context.user_data['system_advance']['username']
+            result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, None, chiedi_password=True)
+            if result == "auth_failed":
+                context.user_data['system_advance']['fase'] = 'password'
+                await invia_messaggio("Connessione tramite chiave SSH fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+            else:
+                del context.user_data['system_advance']
+            return
+        elif fase == 'password':
+            username = context.user_data['system_advance']['username']
+            password = update.message.text
+            nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
+            indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
+            del context.user_data['system_advance']
+            await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=False)
+            return
+
+async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=True):
+    chat_id = update.effective_chat.id
+    comandi = {
+        "uptime": "uptime",
+        "ram_swap": "free -h",
+        "processi": "ps aux --sort=-%mem | head -n 11",
+        "disco": "df -h"
+    }
+    info = []
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        if password is None:
+            ssh.connect(indirizzo_ip, username=username, timeout=10)
+        else:
+            ssh.connect(indirizzo_ip, username=username, password=password, timeout=10)
+        for key, cmd in comandi.items():
+            stdin, stdout, stderr = ssh.exec_command(cmd)
+            output = stdout.read().decode().strip() or stderr.read().decode().strip()
+            if key == "uptime":
+                info.append(f"*Uptime*: `{output}`")
+            elif key == "ram_swap":
+                info.append(f"*RAM/SWAP*: \n```\n{output}\n```")
+            elif key == "processi":
+                info.append(f"*Top 10 processi*: \n```\n{output}\n```")
+            elif key == "disco":
+                info.append(f"*Spazio disco*: \n```\n{output}\n```")
+        ssh.close()
+    except paramiko.AuthenticationException:
+        if chiedi_password:
+            return "auth_failed"
+        else:
+            await invia_messaggio("Autenticazione SSH fallita anche con password.", chat_id)
+            return
+    except Exception as e:
+        await invia_messaggio(f"Errore SSH: {e}", chat_id)
+        return
+    messaggio = f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n" + "\n\n".join(info)
+    await invia_messaggio(messaggio, chat_id)
+    return "ok"
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -941,7 +1048,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo|⚙️ Rimuovi Dispositivo|⚙️ Modifica Dispositivo|☑️ Start)$"), button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo|⚙️ Rimuovi Dispositivo|⚙️ Modifica Dispositivo|🖥️ System Advance|☑️ Start)$"), button_handler))
     
     application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
