@@ -654,11 +654,12 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
     cursor.close()
     cnx.close()
 
+    # Crea righe da massimo 3 pulsanti
     pulsanti = []
-    for nome_dispositivo, indirizzo_ip in dispositivi:
-        pulsanti.append(InlineKeyboardButton(nome_dispositivo, callback_data=f"manutenzione_{nome_dispositivo}_{indirizzo_ip}"))
+    for dispositivo in dispositivi:
+        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"manutenzione_{dispositivo[0]}_{dispositivo[1]}"))
+    keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
-    keyboard = InlineKeyboardMarkup([pulsanti])
     await invia_messaggio("Dove vuoi gestire la manutenzione?", update.message.chat_id, reply_markup=keyboard)
 
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -865,7 +866,6 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.message.chat_id
     await invia_messaggio("Quale dispositivo vuoi rimuovere?", chat_id)
 
-    # Recupera i dispositivi dal database
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
     query = ("SELECT Nome, IP FROM monitor")
@@ -874,15 +874,11 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
     cursor.close()
     cnx.close()
 
-    # Crea un elenco di pulsanti con il nome del dispositivo
     pulsanti = []
     for dispositivo in dispositivi:
         pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"rimuovi_{dispositivo[0]}_{dispositivo[1]}"))
+    keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
-    # Crea la tastiera con i pulsanti
-    keyboard = InlineKeyboardMarkup([pulsanti[i:i+2] for i in range(0, len(pulsanti), 2)])
-
-    # Invia il messaggio con la tastiera
     await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
 
 async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
@@ -907,7 +903,6 @@ async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = update.message.chat_id
     await invia_messaggio("Quale dispositivo vuoi modificare?", chat_id)
 
-    # Recupera i dispositivi dal database
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
     query = ("SELECT Nome, IP FROM monitor")
@@ -916,15 +911,11 @@ async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYP
     cursor.close()
     cnx.close()
 
-    # Crea un elenco di pulsanti con il nome del dispositivo
     pulsanti = []
     for dispositivo in dispositivi:
         pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"modifica_{dispositivo[0]}_{dispositivo[1]}"))
+    keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
-    # Crea la tastiera con i pulsanti
-    keyboard = InlineKeyboardMarkup([pulsanti[i:i+2] for i in range(0, len(pulsanti), 2)])
-
-    # Invia il messaggio con la tastiera
     await invia_messaggio("Seleziona il dispositivo da modificare:", chat_id, reply_markup=keyboard)
 
 async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
