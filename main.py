@@ -908,7 +908,6 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if fase == 'username':
             context.user_data['system_advance']['username'] = update.message.text
             context.user_data['system_advance']['fase'] = 'tentativo_chiave'
-            # Tenta la connessione solo con chiave
             nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
             indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
             username = context.user_data['system_advance']['username']
@@ -924,10 +923,39 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             password = update.message.text
             nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
             indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
-            del context.user_data['system_advance']
+            # Prova SSH con password
+            result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=False)
+            if result == "auth_failed_windows":
+                context.user_data['system_advance']['fase'] = 'windows'
+                await invia_messaggio("Autenticazione SSH fallita. Vuoi provare l'autenticazione Windows?\nRispondi con 'si' per continuare o 'no' per annullare.", update.effective_chat.id)
+            else:
+                del context.user_data['system_advance']
+            return
+        elif fase == 'windows':
+            risposta = update.message.text.strip().lower()
+            if risposta == 'si':
+                await invia_messaggio("Inserisci il nome utente Windows (es. NOMEPC\\utente):", update.effective_chat.id)
+                context.user_data['system_advance']['fase'] = 'windows_username'
+            else:
+                await invia_messaggio("Operazione annullata.", update.effective_chat.id)
+                del context.user_data['system_advance']
+            return
+        elif fase == 'windows_username':
+            context.user_data['system_advance']['windows_username'] = update.message.text
+            await invia_messaggio("Inserisci la password Windows:", update.effective_chat.id)
+            context.user_data['system_advance']['fase'] = 'windows_password'
+            return
+        elif fase == 'windows_password':
+            nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
+            indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
+            username = context.user_data['system_advance']['windows_username']
+            password = update.message.text
+            # Prova SSH con credenziali Windows
             await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=False)
+            del context.user_data['system_advance']
             return
 
+# Modifica la funzione esegui_system_advance per distinguere errore Windows
 async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=True):
     chat_id = update.effective_chat.id
     comandi = {
@@ -941,11 +969,11 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         if password is None:
-            ssh.connect(indirizzo_ip, username=username, timeout=10)
+            ssh.connect(indirizzo_ip, username=username, timeout=5)
         else:
-            ssh.connect(indirizzo_ip, username=username, password=password, timeout=10)
+            ssh.connect(indirizzo_ip, username=username, password=password, timeout=5)
         for key, cmd in comandi.items():
-            stdin, stdout, stderr = ssh.exec_command(cmd)
+            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
             output = stdout.read().decode().strip() or stderr.read().decode().strip()
             if key == "uptime":
                 info.append(f"*Uptime*: `{output}`")
@@ -960,10 +988,23 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         if chiedi_password:
             return "auth_failed"
         else:
-            await invia_messaggio("Autenticazione SSH fallita anche con password.", chat_id)
+            if "\\" not in username and "@" not in username:
+                return "auth_failed_windows"
+            await invia_messaggio("Autenticazione SSH fallita anche con credenziali Windows.", chat_id)
             return
     except Exception as e:
-        await invia_messaggio(f"Errore SSH: {e}", chat_id)
+        # Gestione specifica per timeout su Windows
+        if "timed out" in str(e).lower():
+            await invia_messaggio(
+                "Errore di timeout nella connessione SSH.\n"
+                "Se il dispositivo è Windows, verifica che il servizio OpenSSH sia attivo e la porta 22 sia raggiungibile.\n"
+                "Per abilitare SSH su Windows:\n"
+                "1. Apri 'Servizi' e avvia 'OpenSSH Server'.\n"
+                "2. Assicurati che la porta 22 sia aperta nel firewall.",
+                chat_id
+            )
+        else:
+            await invia_messaggio(f"Errore SSH: {e}", chat_id)
         return
     messaggio = f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n" + "\n\n".join(info)
     await invia_messaggio(messaggio, chat_id)
