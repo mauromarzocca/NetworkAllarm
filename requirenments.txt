@@ -3,3 +3,5 @@ asyncio==3.4.3
 mysql-connector-python==9.1.0
 telegram
 pytz
+paramiko
+ipaddress

@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 8.4.1
+Versione : 9.0.2
 
 ![logo](/img/logo.png)
 
@@ -32,6 +32,7 @@ Versione : 8.4.1
     - [Versione 5.10 - 6.14.5](#versione-510---6145)
     - [Versione 7](#versione-7)
     - [Versione 8](#versione-8)
+    - [Versione 9](#versione-9)
   - [Licenza](#licenza)
   - [Autori](#autori)
   - [Contribuire](#contribuire)
@@ -408,6 +409,12 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 8.3.3 : Risolte problematiche relative all'aggiunta di un dispositivo in Maintenence Mode.
 - Versione 8.4 : Creazione dello script di [aggiornamento](./upgrade.py) automatico.
 - Versione 8.4.1 : Migliorata la UI del Bot.
+
+### Versione 9
+
+- Versione 9.0 : Introduzione della funzionalità 'System Advance' che permette di ottnere le informazioni inerenti ad uptime, processi, memoria e spazio disponibile dei dispositivi monitorati.
+- Versione 9.0.1 : Risolte problematiche con Windows.
+- Versione 9.0.2 : Miglioramento della funzione 'System Advance'.
 
 <!-- markdownlint-enable MD033 -->
 
