@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 9.0.1
+Versione : 9.0.2
 
 ![logo](/img/logo.png)
 
@@ -414,6 +414,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 
 - Versione 9.0 : Introduzione della funzionalità 'System Advance' che permette di ottnere le informazioni inerenti ad uptime, processi, memoria e spazio disponibile dei dispositivi monitorati.
 - Versione 9.0.1 : Risolte problematiche con Windows.
+- Versione 9.0.2 : Miglioramento della funzione 'System Advance'.
 
 <!-- markdownlint-enable MD033 -->
 
