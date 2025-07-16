@@ -958,12 +958,6 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Modifica la funzione esegui_system_advance per distinguere errore Windows
 async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=True):
     chat_id = update.effective_chat.id
-    comandi = {
-        "uptime": "uptime",
-        "ram_swap": "free -h",
-        "processi": "ps aux --sort=-%mem | head -n 11",
-        "disco": "df -h"
-    }
     info = []
     try:
         ssh = paramiko.SSHClient()
@@ -972,9 +966,56 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             ssh.connect(indirizzo_ip, username=username, timeout=5)
         else:
             ssh.connect(indirizzo_ip, username=username, password=password, timeout=5)
+        
+        # Rileva sistema operativo remoto
+        stdin, stdout, stderr = ssh.exec_command('uname', timeout=5)
+        os_type = stdout.read().decode(errors="ignore").strip().lower()
+        # Riconosci anche windows_nt come Windows
+        if not os_type or "windows" in os_type or "windows_nt" in os_type:
+            is_windows = True
+        else:
+            is_windows = False
+
+        if is_windows:
+            comandi = {
+                "uptime": "net stats srv | findstr /C:\"Statistica dal\"",
+                "ram_swap": "wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value",
+                "processi": "tasklist /FO TABLE /NH",
+                "disco": "wmic logicaldisk get size,freespace,caption"
+            }
+        else:
+            comandi = {
+                "uptime": "uptime",
+                "ram_swap": "free -h",
+                "processi": "ps aux --sort=-%mem | head -n 11",
+                "disco": "df -h"
+            }
+
         for key, cmd in comandi.items():
-            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
-            output = stdout.read().decode().strip() or stderr.read().decode().strip()
+            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
+            output_bytes = stdout.read()
+            error_bytes = stderr.read()
+            output = ""
+            if output_bytes:
+                try:
+                    output = output_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    try:
+                        output = output_bytes.decode("cp850")
+                    except Exception:
+                        output = output_bytes.decode("utf-8", errors="replace")
+            elif error_bytes:
+                try:
+                    output = error_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    try:
+                        output = error_bytes.decode("cp850")
+                    except Exception:
+                        output = error_bytes.decode("utf-8", errors="replace")
+            output = output.strip()
+            if not output:
+                info.append(f"*{key}*: Nessun output dal comando `{cmd}`")
+                continue
             if key == "uptime":
                 info.append(f"*Uptime*: `{output}`")
             elif key == "ram_swap":
@@ -993,7 +1034,6 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             await invia_messaggio("Autenticazione SSH fallita anche con credenziali Windows.", chat_id)
             return
     except Exception as e:
-        # Gestione specifica per timeout su Windows
         if "timed out" in str(e).lower():
             await invia_messaggio(
                 "Errore di timeout nella connessione SSH.\n"
@@ -1006,8 +1046,21 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         else:
             await invia_messaggio(f"Errore SSH: {e}", chat_id)
         return
-    messaggio = f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n" + "\n\n".join(info)
-    await invia_messaggio(messaggio, chat_id)
+    # Invio sempre una risposta, anche se info è vuoto
+    if not info:
+        await invia_messaggio(
+            f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n"
+            "❗ Nessuna informazione ricevuta dal sistema remoto.\n"
+            "Verifica che i comandi siano disponibili e che il servizio sia attivo.",
+            chat_id
+        )
+    else:
+        messaggio = f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n" + "\n\n".join(info)
+        # Suddividi il messaggio se troppo lungo
+        if len(messaggio) > 4000:
+            await invia_messaggi_divisi(messaggio, chat_id)
+        else:
+            await invia_messaggio(messaggio, chat_id)
     return "ok"
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
