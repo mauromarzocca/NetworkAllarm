@@ -12,6 +12,7 @@ from config import DB_USER, DB_PASSWORD
 import mysql.connector
 import ipaddress
 import paramiko
+import re
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -972,94 +973,118 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
 
         if is_windows:
-            comandi = {
-                "uptime": "net stats srv | findstr /C:\"Statistica dal\"",
-                "ram_swap": "wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value",
-                "processi": "tasklist /FO TABLE /NH",
-                "disco": "wmic logicaldisk get size,freespace,caption"
-            }
-        else:
-            comandi = {
-                "uptime": "uptime -s",
-                "ram_swap": "free -h",
-                "processi": "ps aux --sort=-%mem | head -n 11",
-                "disco": "df -h"
-            }
-
-        # UPTIME
-        stdin, stdout, stderr = ssh.exec_command(comandi["uptime"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if is_windows:
-            # net stats srv | findstr /C:"Statistica dal"
+            # UPTIME (PowerShell, formato leggibile)
+            stdin, stdout, stderr = ssh.exec_command(
+                'powershell -Command "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime"', timeout=10)
+            output = stdout.read().decode(errors="ignore").strip()
+            # Esempio output: 16/07/2025 08:12:34
             if output:
-                # Esempio output: Statistica dal 15/07/2025 10:23:45
-                data = output.split("dal")[-1].strip() if "dal" in output else output
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data}`", chat_id)
+                try:
+                    # Prova a formattare la data
+                    match = re.search(r'(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})', output)
+                    if match:
+                        data_avvio = match.group(1)
+                        await invia_messaggio(
+                            f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data_avvio}`", chat_id)
+                    else:
+                        await invia_messaggio(
+                            f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
+                except Exception:
+                    await invia_messaggio(
+                        f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
             else:
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
-        else:
-            # uptime -s -> 2025-07-15 10:23:45
-            if output:
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
-            else:
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
+                await invia_messaggio(
+                    f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
 
-        # RAM/SWAP
-        stdin, stdout, stderr = ssh.exec_command(comandi["ram_swap"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if is_windows:
-            # wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value
-            # Output esempio:
-            # FreePhysicalMemory=1234567
-            # TotalVisibleMemorySize=3456789
-            lines = output.splitlines()
+            # RAM/SWAP
+            stdin, stdout, stderr = ssh.exec_command(
+                'wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value', timeout=10)
+            output = stdout.read().decode(errors="ignore").strip()
             mem = {}
-            for line in lines:
+            for line in output.splitlines():
                 if "=" in line:
                     k, v = line.split("=")
-                    mem[k.strip()] = int(v.strip())
+                    try:
+                        mem[k.strip()] = int(v.strip())
+                    except Exception:
+                        pass
             if "FreePhysicalMemory" in mem and "TotalVisibleMemorySize" in mem:
                 total = mem["TotalVisibleMemorySize"] / 1024 / 1024
                 free = mem["FreePhysicalMemory"] / 1024 / 1024
                 used = total - free
-                msg = f"Mem       Total: {total:.2f} GB  Disp: {free:.2f} GB   Used: {used:.2f} GB\n"
-                msg += "SWAP         Total: N/D  Disp: N/D   Used: N/D"
+                msg = f"Memoria Totale: {total:.2f} GB\nLibera: {free:.2f} GB\nUsata: {used:.2f} GB\nSWAP: N/D"
             else:
                 msg = output or "Dati RAM non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
-        else:
-            # free -h
-            # Output esempio:
-            #               total        used        free      shared  buff/cache   available
-            # Mem:           7,7G        2,1G        3,2G        123M        2,4G        5,2G
-            # Swap:          2,0G        0B          2,0G
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+
+            # PROCESSI (Top 10 per uso RAM)
+            # tasklist /FO CSV /NH restituisce: "Image Name","PID","Session Name","Session#","Mem Usage"
+            stdin, stdout, stderr = ssh.exec_command(
+                'wmic process get ProcessId,WorkingSetSize,Name /format:csv', timeout=15)
+            output = stdout.read().decode(errors="ignore")
             lines = output.splitlines()
-            mem_line = next((l for l in lines if l.lower().startswith("mem:")), None)
-            swap_line = next((l for l in lines if l.lower().startswith("swap:")), None)
-            if mem_line and swap_line:
-                mem_vals = mem_line.split()
-                swap_vals = swap_line.split()
-                msg = f"Mem       Total: {mem_vals[1]}  Used: {mem_vals[2]}  Disp: {mem_vals[6] if len(mem_vals)>6 else mem_vals[3]}\n"
-                msg += f"SWAP         Total: {swap_vals[1]}  Used: {swap_vals[2]}  Disp: {swap_vals[3] if len(swap_vals)>3 else swap_vals[1]}"
-            else:
-                msg = output or "Dati RAM non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+            processi = []
+            for line in lines[1:]:
+                parts = line.split(',')
+                if len(parts) >= 4:
+                    try:
+                        name = parts[-1].strip()
+                        pid = parts[-2].strip()
+                        mem = int(parts[-3].strip()) if parts[-3].strip().isdigit() else 0
+                        processi.append((name, pid, mem))
+                    except Exception:
+                        continue
+            # Ordina per memoria decrescente e prendi i primi 10
+            processi = sorted(processi, key=lambda x: x[2], reverse=True)[:10]
+            msg_proc = "Top 10 processi per uso RAM:\n"
+            for name, pid, mem in processi:
+                msg_proc += f"{name} (PID {pid}) - {mem/1024/1024:.2f} GB\n"
+            if not processi:
+                msg_proc += "Dati non disponibili"
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
 
-        # PROCESSI
-        stdin, stdout, stderr = ssh.exec_command(comandi["processi"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if output:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output}\n```", chat_id)
-        else:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi: dati non disponibili", chat_id)
+            # DISCO (Espresso in GB)
+            stdin, stdout, stderr = ssh.exec_command(
+                'wmic logicaldisk get Caption,Size,FreeSpace', timeout=10)
+            output = stdout.read().decode(errors="ignore").strip()
+            lines = output.splitlines()
+            msg_disco = "Spazio disco (GB):\n"
+            for line in lines[1:]:
+                parts = line.split()
+                if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+                    drive = parts[0]
+                    size = int(parts[1]) / (1024 ** 3)
+                    free = int(parts[2]) / (1024 ** 3)
+                    used = size - free
+                    msg_disco += f"{drive}: Totale {size:.2f} GB | Usato {used:.2f} GB | Libero {free:.2f} GB\n"
+            if msg_disco.strip() == "Spazio disco (GB):":
+                msg_disco += "Nessun disco rilevato o dati non disponibili"
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
 
-        # DISCO
-        stdin, stdout, stderr = ssh.exec_command(comandi["disco"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if output:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output}\n```", chat_id)
         else:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco: dati non disponibili", chat_id)
+            # Linux: mantiene la logica attuale
+            stdin, stdout, stderr = ssh.exec_command("uptime -s", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output or 'dato non disponibile'}`", chat_id)
+
+            stdin, stdout, stderr = ssh.exec_command("free -h", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{output or 'Dati RAM non disponibili'}", chat_id)
+
+            stdin, stdout, stderr = ssh.exec_command("ps aux --sort=-%mem | head -n 11", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
+
+            stdin, stdout, stderr = ssh.exec_command("df -h", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
 
         ssh.close()
     except paramiko.AuthenticationException:
@@ -1071,6 +1096,9 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             await invia_messaggio("Autenticazione SSH fallita anche con credenziali Windows.", chat_id)
             return
     except Exception as e:
+        import traceback
+        print("Eccezione SSH:", repr(e))
+        traceback.print_exc()
         if "timed out" in str(e).lower():
             await invia_messaggio(
                 "Errore di timeout nella connessione SSH.\n"
@@ -1081,7 +1109,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 chat_id
             )
         else:
-            await invia_messaggio(f"Errore SSH: {e}", chat_id)
+            await invia_messaggio(f"Errore SSH: {repr(e)}", chat_id)
         return
     return "ok"
 
