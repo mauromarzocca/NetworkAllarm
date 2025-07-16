@@ -958,7 +958,6 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Modifica la funzione esegui_system_advance per distinguere errore Windows
 async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=True):
     chat_id = update.effective_chat.id
-    info = []
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -970,11 +969,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         # Rileva sistema operativo remoto
         stdin, stdout, stderr = ssh.exec_command('uname', timeout=5)
         os_type = stdout.read().decode(errors="ignore").strip().lower()
-        # Riconosci anche windows_nt come Windows
-        if not os_type or "windows" in os_type or "windows_nt" in os_type:
-            is_windows = True
-        else:
-            is_windows = False
+        is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
 
         if is_windows:
             comandi = {
@@ -985,45 +980,87 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             }
         else:
             comandi = {
-                "uptime": "uptime",
+                "uptime": "uptime -s",
                 "ram_swap": "free -h",
                 "processi": "ps aux --sort=-%mem | head -n 11",
                 "disco": "df -h"
             }
 
-        for key, cmd in comandi.items():
-            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
-            output_bytes = stdout.read()
-            error_bytes = stderr.read()
-            output = ""
-            if output_bytes:
-                try:
-                    output = output_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    try:
-                        output = output_bytes.decode("cp850")
-                    except Exception:
-                        output = output_bytes.decode("utf-8", errors="replace")
-            elif error_bytes:
-                try:
-                    output = error_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    try:
-                        output = error_bytes.decode("cp850")
-                    except Exception:
-                        output = error_bytes.decode("utf-8", errors="replace")
-            output = output.strip()
-            if not output:
-                info.append(f"*{key}*: Nessun output dal comando `{cmd}`")
-                continue
-            if key == "uptime":
-                info.append(f"*Uptime*: `{output}`")
-            elif key == "ram_swap":
-                info.append(f"*RAM/SWAP*: \n```\n{output}\n```")
-            elif key == "processi":
-                info.append(f"*Top 10 processi*: \n```\n{output}\n```")
-            elif key == "disco":
-                info.append(f"*Spazio disco*: \n```\n{output}\n```")
+        # UPTIME
+        stdin, stdout, stderr = ssh.exec_command(comandi["uptime"], timeout=10)
+        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+        if is_windows:
+            # net stats srv | findstr /C:"Statistica dal"
+            if output:
+                # Esempio output: Statistica dal 15/07/2025 10:23:45
+                data = output.split("dal")[-1].strip() if "dal" in output else output
+                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data}`", chat_id)
+            else:
+                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
+        else:
+            # uptime -s -> 2025-07-15 10:23:45
+            if output:
+                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
+            else:
+                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
+
+        # RAM/SWAP
+        stdin, stdout, stderr = ssh.exec_command(comandi["ram_swap"], timeout=10)
+        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+        if is_windows:
+            # wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value
+            # Output esempio:
+            # FreePhysicalMemory=1234567
+            # TotalVisibleMemorySize=3456789
+            lines = output.splitlines()
+            mem = {}
+            for line in lines:
+                if "=" in line:
+                    k, v = line.split("=")
+                    mem[k.strip()] = int(v.strip())
+            if "FreePhysicalMemory" in mem and "TotalVisibleMemorySize" in mem:
+                total = mem["TotalVisibleMemorySize"] / 1024 / 1024
+                free = mem["FreePhysicalMemory"] / 1024 / 1024
+                used = total - free
+                msg = f"Mem       Total: {total:.2f} GB  Disp: {free:.2f} GB   Used: {used:.2f} GB\n"
+                msg += "SWAP         Total: N/D  Disp: N/D   Used: N/D"
+            else:
+                msg = output or "Dati RAM non disponibili"
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+        else:
+            # free -h
+            # Output esempio:
+            #               total        used        free      shared  buff/cache   available
+            # Mem:           7,7G        2,1G        3,2G        123M        2,4G        5,2G
+            # Swap:          2,0G        0B          2,0G
+            lines = output.splitlines()
+            mem_line = next((l for l in lines if l.lower().startswith("mem:")), None)
+            swap_line = next((l for l in lines if l.lower().startswith("swap:")), None)
+            if mem_line and swap_line:
+                mem_vals = mem_line.split()
+                swap_vals = swap_line.split()
+                msg = f"Mem       Total: {mem_vals[1]}  Used: {mem_vals[2]}  Disp: {mem_vals[6] if len(mem_vals)>6 else mem_vals[3]}\n"
+                msg += f"SWAP         Total: {swap_vals[1]}  Used: {swap_vals[2]}  Disp: {swap_vals[3] if len(swap_vals)>3 else swap_vals[1]}"
+            else:
+                msg = output or "Dati RAM non disponibili"
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+
+        # PROCESSI
+        stdin, stdout, stderr = ssh.exec_command(comandi["processi"], timeout=10)
+        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+        if output:
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output}\n```", chat_id)
+        else:
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi: dati non disponibili", chat_id)
+
+        # DISCO
+        stdin, stdout, stderr = ssh.exec_command(comandi["disco"], timeout=10)
+        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+        if output:
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output}\n```", chat_id)
+        else:
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco: dati non disponibili", chat_id)
+
         ssh.close()
     except paramiko.AuthenticationException:
         if chiedi_password:
@@ -1046,21 +1083,6 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         else:
             await invia_messaggio(f"Errore SSH: {e}", chat_id)
         return
-    # Invio sempre una risposta, anche se info è vuoto
-    if not info:
-        await invia_messaggio(
-            f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n"
-            "❗ Nessuna informazione ricevuta dal sistema remoto.\n"
-            "Verifica che i comandi siano disponibili e che il servizio sia attivo.",
-            chat_id
-        )
-    else:
-        messaggio = f"🖥️ *System Advance* per {nome_dispositivo} ({indirizzo_ip}):\n\n" + "\n\n".join(info)
-        # Suddividi il messaggio se troppo lungo
-        if len(messaggio) > 4000:
-            await invia_messaggi_divisi(messaggio, chat_id)
-        else:
-            await invia_messaggio(messaggio, chat_id)
     return "ok"
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
