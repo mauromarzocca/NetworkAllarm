@@ -412,7 +412,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 
 ### Versione 9
 
-- Versione 9.0 : Introduzione della funzionalità 'System Advance'.
+- Versione 9.0 : Introduzione della funzionalità 'System Advance' che permette di ottnere le informazioni inerenti ad uptime, processi, memoria e spazio disponibile dei dispositivi monitorati.
 
 <!-- markdownlint-enable MD033 -->
 
