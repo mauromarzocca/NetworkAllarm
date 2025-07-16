@@ -1081,7 +1081,8 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
 
-            stdin, stdout, stderr = ssh.exec_command("df -h", timeout=10)
+            stdin, stdout, stderr = ssh.exec_command("df -h -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs -x ramfs", timeout=10)
+            #stdin, stdout, stderr = ssh.exec_command("df -h", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
