@@ -14,6 +14,7 @@ import ipaddress
 import paramiko
 import re
 import json
+import logging
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -994,6 +995,12 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         os_type = stdout.read().decode(errors="ignore").strip().lower()
         is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
 
+        # Carica fs_monitor da config.py
+        try:
+            from config import fs_monitor
+        except ImportError:
+            fs_monitor = {}
+
         if is_windows:
             # UPTIME
             stdin, stdout, stderr = ssh.exec_command(
@@ -1002,7 +1009,8 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             match = re.search(r'(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})', output)
             data_avvio = match.group(1) if match else output or "dato non disponibile"
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data_avvio}`", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
+                f"Online da: `{data_avvio}`", chat_id)
 
             # RAM
             stdin, stdout, stderr = ssh.exec_command(
@@ -1012,11 +1020,15 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 try:
                     total, free = map(lambda x: int(x) / 1024 / 1024, output.split())
                     used = total - free
-                    msg = f"Memoria Totale: {total:.2f} GB\nLibera: {free:.2f} GB\nUsata: {used:.2f} GB\nSWAP: N/D"
+                    msg = f"Memoria Totale: {total:.2f} GB\n" \
+                          f"Libera: {free:.2f} GB\n" \
+                          f"Usata: {used:.2f} GB\n" \
+                          f"SWAP: N/D"
                 except Exception:
                     msg = "Dati RAM non disponibili"
             else:
                 msg = "Dati RAM non disponibili"
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
 
             # CPU Usage migliorato (con fallback completo)
             cpu_usage = None
@@ -1044,23 +1056,19 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                         if match:
                             cpu_usage = float(match.group(1))
             except Exception as e:
-                print("Errore CPU:", repr(e))
-
+                logging.error("Errore CPU: %s", repr(e))
             cpu_msg = f"CPU Usage: {cpu_usage:.2f}%" if cpu_usage is not None else "CPU Usage: dati non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{cpu_msg}", chat_id)
 
             # PROCESSI (Top 10 per CPU + RAM)
             stdin, stdout, stderr = ssh.exec_command(
                 'powershell -Command "Get-Process | Select-Object Name, Id, WorkingSet, CPU | Sort-Object { $_.CPU + $_.WorkingSet } -Descending | Select-Object -First 10 | ConvertTo-Json"',
                 timeout=15
             )
-
             output = stdout.read().decode(errors="ignore").strip()
             error = stderr.read().decode(errors="ignore").strip()
-
             if error:
-                print(f"[Errore PowerShell]: {error}")
-
+                logging.error(f"[Errore PowerShell]: {error}")
             if not output:
                 msg_proc = "Dati non disponibili"
             else:
@@ -1068,7 +1076,6 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                     processes = json.loads(output)
                     if isinstance(processes, dict):
                         processes = [processes]
-
                     msg_proc = "Top 10 processi per uso combinato di CPU e RAM:\n"
                     for p in processes:
                         name = p["Name"]
@@ -1076,16 +1083,18 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                         mem = int(p["WorkingSet"])
                         cpu = float(p["CPU"])
                         msg_proc += f"{name} (PID {pid}) - RAM: {mem / (1024 ** 3):.2f} GB | CPU: {cpu:.2f}s\n"
-
                 except Exception as e:
-                    print(f"[Errore parsing JSON]: {e}")
+                    logging.error(f"[Errore parsing JSON]: {e}")
                     msg_proc = "Dati non disponibili"
-
             await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
 
-            # DISCO (con fallback su PowerShell)
-            stdin, stdout, stderr = ssh.exec_command(
-                'powershell -Command "Get-CimInstance Win32_LogicalDisk -Filter \\\"DriveType=3\\\" | ForEach-Object { \\\"$($_.DeviceID), $($_.Size), $($_.FreeSpace)\\\" }"', timeout=10)
+            # DISCO (con filtro su fs_monitor)
+            fs_to_monitor = fs_monitor.get(indirizzo_ip, None)
+            command = (
+                'powershell -Command "Get-CimInstance Win32_LogicalDisk -Filter \\\"DriveType=3\\\" | '
+                'ForEach-Object { \\\"$($_.DeviceID), $($_.Size), $($_.FreeSpace)\\\" }"'
+            )
+            stdin, stdout, stderr = ssh.exec_command(command, timeout=10)
             output = stdout.read().decode(errors="ignore").strip()
             lines = output.splitlines()
             msg_disco = "Spazio disco (GB):\n"
@@ -1093,23 +1102,25 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 if "," in line:
                     try:
                         drive, size, free = map(str.strip, line.split(",", 2))
-                        size_gb = int(size) / (1024 ** 3)
-                        free_gb = int(free) / (1024 ** 3)
-                        used_gb = size_gb - free_gb
-                        msg_disco += f"{drive}: Totale {size_gb:.2f} GB | Usato {used_gb:.2f} GB | Libero {free_gb:.2f} GB\n"
+                        if fs_to_monitor is None or drive in fs_to_monitor:
+                            size_gb = int(size) / (1024 ** 3)
+                            free_gb = int(free) / (1024 ** 3)
+                            used_gb = size_gb - free_gb
+                            msg_disco += f"{drive}: Totale {size_gb:.2f} GB | Usato {used_gb:.2f} GB | Libero {free_gb:.2f} GB\n"
                     except Exception as e:
-                        print("Errore parsing disco:", repr(e))
+                        logging.error("Errore parsing disco: %s", repr(e))
                         continue
             if msg_disco.strip() == "Spazio disco (GB):":
                 msg_disco += "Nessun disco rilevato o dati non disponibili"
             await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
 
         else:
-            # Parte Linux invariata
+            # Parte Linux
             stdin, stdout, stderr = ssh.exec_command("uptime -s", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output or 'dato non disponibile'}`", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
+                f"Online da: `{output or 'dato non disponibile'}`", chat_id)
 
             stdin, stdout, stderr = ssh.exec_command("top -bn1 | grep '%Cpu(s)'", timeout=10)
             cpu_output = stdout.read().decode(errors="ignore").strip()
@@ -1126,21 +1137,39 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 cpu_msg = f"CPU Usage: {cpu_usage:.2f}%"
             else:
                 cpu_msg = "CPU Usage: dati non disponibili"
-
             stdin, stdout, stderr = ssh.exec_command("free -h", timeout=10)
-            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            ram_output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{output or 'Dati RAM non disponibili'}\n{cpu_msg}", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
+                f"{ram_output or 'Dati RAM non disponibili'}\n"
+                f"{cpu_msg}", chat_id)
 
             stdin, stdout, stderr = ssh.exec_command("ps aux --sort=-%mem | head -n 11", timeout=10)
-            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            proc_output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
+                f"Top 10 processi:\n"
+                f"```\n{proc_output or 'Dati non disponibili'}\n```", chat_id)
 
-            stdin, stdout, stderr = ssh.exec_command("df -h -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs -x ramfs", timeout=10)
-            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            # DISCO (con filtro su fs_monitor)
+            fs_to_monitor = fs_monitor.get(indirizzo_ip, None)
+            if fs_to_monitor is None:
+                stdin, stdout, stderr = ssh.exec_command("df -h", timeout=10)
+                output = stdout.read().decode(errors="ignore").strip()
+            else:
+                fs_list = [fs.strip() for fs in fs_to_monitor.split(",")]
+                pattern = '|'.join(map(lambda x: re.escape(x), fs_list))
+                command = f"df -h | grep -E '{pattern}'"
+                stdin, stdout, stderr = ssh.exec_command(command, timeout=10)
+                output = stdout.read().decode(errors="ignore").strip()
+                error = stderr.read().decode(errors="ignore").strip()
+                if error and not output:
+                    output = error  # Mostra l'errore ma non blocca
+
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
+                f"Spazio disco:\n"
+                f"```\n{output or 'Dati non disponibili'}\n```", chat_id)
 
         ssh.close()
     except paramiko.AuthenticationException:
@@ -1153,7 +1182,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             return
     except Exception as e:
         import traceback
-        print("Eccezione SSH:", repr(e))
+        logging.error("Eccezione SSH: %s", repr(e))
         traceback.print_exc()
         if "timed out" in str(e).lower():
             await invia_messaggio(
