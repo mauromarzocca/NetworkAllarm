@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 9.0.4
+Versione : 9.0.5
 
 ![logo](/img/logo.png)
 
@@ -417,6 +417,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 9.0.2 : Miglioramento della funzione 'System Advance'.
 - Versione 9.0.3 : Migliorato monitoraggio dei File System.
 - Versione 9.0.4 : Introdotto il Monitoraaggio della CPU (per Linux).
+- Versione 9.0.5 : Migliorata gestione dei processi su Windows.
 
 <!-- markdownlint-enable MD033 -->
 
