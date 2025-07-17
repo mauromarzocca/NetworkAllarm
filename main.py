@@ -13,6 +13,7 @@ import mysql.connector
 import ipaddress
 import paramiko
 import re
+import json
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -1026,23 +1027,38 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             cpu_msg = f"CPU Usage: {cpu_usage:.2f}%" if cpu_usage is not None else "CPU Usage: dati non disponibili"
             await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
 
-            # PROCESSI (con WorkingSet)
+            # PROCESSI (Top 10 per CPU + RAM)
             stdin, stdout, stderr = ssh.exec_command(
-                'powershell -Command "Get-Process | Select-Object Name, Id, WorkingSet | Sort-Object WorkingSet -Descending | Select-Object -First 10"', timeout=15)
+                'powershell -Command "Get-Process | Select-Object Name, Id, WorkingSet, CPU | Sort-Object { $_.CPU + $_.WorkingSet } -Descending | Select-Object -First 10 | ConvertTo-Json"',
+                timeout=15
+            )
+
             output = stdout.read().decode(errors="ignore").strip()
-            lines = output.splitlines()
-            msg_proc = "Top 10 processi per uso RAM:\n"
-            for line in lines[3:]:  # Skip intestazione
-                parts = re.split(r'\s{2,}', line.strip())
-                if len(parts) >= 3:
-                    name, pid, mem = parts[:3]
-                    try:
-                        mem = int(mem)
-                        msg_proc += f"{name} (PID {pid}) - {mem / 1024 / 1024:.2f} GB\n"
-                    except Exception:
-                        continue
-            if msg_proc.strip() == "Top 10 processi per uso RAM:":
-                msg_proc += "Dati non disponibili"
+            error = stderr.read().decode(errors="ignore").strip()
+
+            if error:
+                print(f"[Errore PowerShell]: {error}")
+
+            if not output:
+                msg_proc = "Dati non disponibili"
+            else:
+                try:
+                    processes = json.loads(output)
+                    if isinstance(processes, dict):
+                        processes = [processes]
+
+                    msg_proc = "Top 10 processi per uso combinato di CPU e RAM:\n"
+                    for p in processes:
+                        name = p["Name"]
+                        pid = p["Id"]
+                        mem = int(p["WorkingSet"])
+                        cpu = float(p["CPU"])
+                        msg_proc += f"{name} (PID {pid}) - RAM: {mem / (1024 ** 3):.2f} GB | CPU: {cpu:.2f}s\n"
+
+                except Exception as e:
+                    print(f"[Errore parsing JSON]: {e}")
+                    msg_proc = "Dati non disponibili"
+
             await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
 
             # DISCO (con fallback su PowerShell)
