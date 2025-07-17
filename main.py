@@ -966,7 +966,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             ssh.connect(indirizzo_ip, username=username, timeout=5)
         else:
             ssh.connect(indirizzo_ip, username=username, password=password, timeout=5)
-        
+
         stdin, stdout, stderr = ssh.exec_command('uname', timeout=5)
         os_type = stdout.read().decode(errors="ignore").strip().lower()
         is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
@@ -983,39 +983,50 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
 
             # RAM
             stdin, stdout, stderr = ssh.exec_command(
-                'wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value', timeout=10)
+                'powershell -Command "$mem = Get-CimInstance Win32_OperatingSystem; $mem.TotalVisibleMemorySize, $mem.FreePhysicalMemory"', timeout=10)
             output = stdout.read().decode(errors="ignore").strip()
-            mem = {}
-            for line in output.splitlines():
-                if "=" in line:
-                    k, v = line.split("=")
-                    try:
-                        mem[k.strip()] = int(v.strip())
-                    except Exception:
-                        pass
-            if "FreePhysicalMemory" in mem and "TotalVisibleMemorySize" in mem:
-                total = mem["TotalVisibleMemorySize"] / 1024 / 1024
-                free = mem["FreePhysicalMemory"] / 1024 / 1024
-                used = total - free
-                msg = f"Memoria Totale: {total:.2f} GB\nLibera: {free:.2f} GB\nUsata: {used:.2f} GB\nSWAP: N/D"
+            if output:
+                try:
+                    total, free = map(lambda x: int(x) / 1024 / 1024, output.split())
+                    used = total - free
+                    msg = f"Memoria Totale: {total:.2f} GB\nLibera: {free:.2f} GB\nUsata: {used:.2f} GB\nSWAP: N/D"
+                except Exception:
+                    msg = "Dati RAM non disponibili"
             else:
-                msg = output or "Dati RAM non disponibili"
+                msg = "Dati RAM non disponibili"
 
-            # CPU Usage migliorato
-            stdin, stdout, stderr = ssh.exec_command(
-                "powershell -Command \"Get-Counter '\\\\Processor(_Total)\\\\% Processor Time' -SampleInterval 1 -MaxSamples 1 | "
-                "Select-Object -ExpandProperty CounterSamples | Select-Object -ExpandProperty CookedValue\"", timeout=10)
-            cpu_output = stdout.read().decode(errors="ignore").strip()
+            # CPU Usage migliorato (con fallback completo)
+            cpu_usage = None
             try:
-                cpu_usage = float(cpu_output)
-                cpu_msg = f"CPU Usage: {cpu_usage:.2f}%"
-            except Exception:
-                cpu_msg = "CPU Usage: dati non disponibili"
+                # Metodo 1: Get-CimInstance (Windows 11)
+                stdin, stdout, stderr = ssh.exec_command(
+                    "powershell -Command \"$cpu = Get-CimInstance Win32_Processor; $cpu.LoadPercentage\"", timeout=10)
+                cpu_output = stdout.read().decode(errors="ignore").strip()
+                cpu_values = [float(x.strip()) for x in cpu_output.split() if x.strip().replace('.', '', 1).isdigit()]
+                if cpu_values:
+                    cpu_usage = sum(cpu_values) / len(cpu_values)
+                else:
+                    # Metodo 2: Get-Counter (Windows 10/11 compatibile)
+                    stdin, stdout, stderr = ssh.exec_command(
+                        "powershell -Command \"(Get-Counter '\\\\Processor(_Total)\\% Processor Time').CounterSamples.CookedValue\"", timeout=15)
+                    cpu_output = stdout.read().decode(errors="ignore").strip()
+                    if cpu_output:
+                        cpu_usage = float(cpu_output)
+                    else:
+                        # Metodo 3: typeperf (ultimo fallback)
+                        stdin, stdout, stderr = ssh.exec_command(
+                            "powershell -Command \"typeperf '\\\\Processor(_Total)\\% Processor Time' -sc 1\"", timeout=15)
+                        cpu_output = stdout.read().decode(errors="ignore").strip()
+                        match = re.search(r'(\d+\.\d+),$', cpu_output, re.MULTILINE)
+                        if match:
+                            cpu_usage = float(match.group(1))
+            except Exception as e:
+                print("Errore CPU:", repr(e))
 
-            await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
+            cpu_msg = f"CPU Usage: {cpu_usage:.2f}%" if cpu_usage is not None else "CPU Usage: dati non disponibili"
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
 
-            # PROCESSI aggiornato (con nomi e RAM)
+            # PROCESSI (con WorkingSet)
             stdin, stdout, stderr = ssh.exec_command(
                 'powershell -Command "Get-Process | Select-Object Name, Id, WorkingSet | Sort-Object WorkingSet -Descending | Select-Object -First 10"', timeout=15)
             output = stdout.read().decode(errors="ignore").strip()
@@ -1023,8 +1034,8 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             msg_proc = "Top 10 processi per uso RAM:\n"
             for line in lines[3:]:  # Skip intestazione
                 parts = re.split(r'\s{2,}', line.strip())
-                if len(parts) == 3:
-                    name, pid, mem = parts
+                if len(parts) >= 3:
+                    name, pid, mem = parts[:3]
                     try:
                         mem = int(mem)
                         msg_proc += f"{name} (PID {pid}) - {mem / 1024 / 1024:.2f} GB\n"
@@ -1032,27 +1043,28 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                         continue
             if msg_proc.strip() == "Top 10 processi per uso RAM:":
                 msg_proc += "Dati non disponibili"
-            await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
 
-            # DISCO
+            # DISCO (con fallback su PowerShell)
             stdin, stdout, stderr = ssh.exec_command(
-                'wmic logicaldisk get Caption,Size,FreeSpace', timeout=10)
+                'powershell -Command "Get-CimInstance Win32_LogicalDisk -Filter \\\"DriveType=3\\\" | ForEach-Object { \\\"$($_.DeviceID), $($_.Size), $($_.FreeSpace)\\\" }"', timeout=10)
             output = stdout.read().decode(errors="ignore").strip()
             lines = output.splitlines()
             msg_disco = "Spazio disco (GB):\n"
-            for line in lines[1:]:
-                parts = line.split()
-                if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
-                    drive = parts[0]
-                    size = int(parts[1]) / (1024 ** 3)
-                    free = int(parts[2]) / (1024 ** 3)
-                    used = size - free
-                    msg_disco += f"{drive}: Totale {size:.2f} GB | Usato {used:.2f} GB | Libero {free:.2f} GB\n"
+            for line in lines:
+                if "," in line:
+                    try:
+                        drive, size, free = map(str.strip, line.split(",", 2))
+                        size_gb = int(size) / (1024 ** 3)
+                        free_gb = int(free) / (1024 ** 3)
+                        used_gb = size_gb - free_gb
+                        msg_disco += f"{drive}: Totale {size_gb:.2f} GB | Usato {used_gb:.2f} GB | Libero {free_gb:.2f} GB\n"
+                    except Exception as e:
+                        print("Errore parsing disco:", repr(e))
+                        continue
             if msg_disco.strip() == "Spazio disco (GB):":
                 msg_disco += "Nessun disco rilevato o dati non disponibili"
-            await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
 
         else:
             # Parte Linux invariata
