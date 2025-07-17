@@ -6,7 +6,7 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
-from config import cartella_log, nome_file
+from config import cartella_log, nome_file, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import mysql.connector
@@ -904,7 +904,7 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) eliminato con successo!", update.effective_chat.id)
 
         context.user_data['azione'] = None
-    
+
     if 'system_advance' in context.user_data:
         fase = context.user_data['system_advance']['fase']
         if fase == 'username':
@@ -913,12 +913,34 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
             indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
             username = context.user_data['system_advance']['username']
-            result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, None, chiedi_password=True)
-            if result == "auth_failed":
-                context.user_data['system_advance']['fase'] = 'password'
-                await invia_messaggio("Connessione tramite chiave SSH fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+
+            # Prima di chiedere la password, verifica se esiste una password salvata
+            password_salvata = None
+            if indirizzo_ip in credenziali:
+                if credenziali[indirizzo_ip]["username"] == username:
+                    password_salvata = credenziali[indirizzo_ip]["password"]
+
+            if password_salvata:
+                # Tenta la connessione con la password salvata
+                result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password_salvata, chiedi_password=False)
+                if result == "auth_failed_windows":
+                    context.user_data['system_advance']['fase'] = 'windows'
+                    await invia_messaggio("Autenticazione SSH fallita. Vuoi provare l'autenticazione Windows?\nRispondi con 'si' per continuare o 'no' per annullare.", update.effective_chat.id)
+                elif result == "auth_failed":
+                    # Connessione fallita, chiedi la password all'utente
+                    context.user_data['system_advance']['fase'] = 'password'
+                    await invia_messaggio("Connessione tramite chiave SSH e password salvata fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+                else:
+                    # Connessione riuscita, elimina il contesto
+                    del context.user_data['system_advance']
             else:
-                del context.user_data['system_advance']
+                # Nessuna password salvata, prova con la chiave SSH
+                result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, None, chiedi_password=True)
+                if result == "auth_failed":
+                    context.user_data['system_advance']['fase'] = 'password'
+                    await invia_messaggio("Connessione tramite chiave SSH fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+                else:
+                    del context.user_data['system_advance']
             return
         elif fase == 'password':
             username = context.user_data['system_advance']['username']
