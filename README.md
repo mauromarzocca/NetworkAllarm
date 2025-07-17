@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 9.0.2
+Versione : 9.1
 
 ![logo](/img/logo.png)
 
@@ -415,6 +415,12 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 9.0 : Introduzione della funzionalità 'System Advance' che permette di ottnere le informazioni inerenti ad uptime, processi, memoria e spazio disponibile dei dispositivi monitorati.
 - Versione 9.0.1 : Risolte problematiche con Windows.
 - Versione 9.0.2 : Miglioramento della funzione 'System Advance'.
+- Versione 9.0.3 : Migliorato monitoraggio dei File System.
+- Versione 9.0.4 : Introdotto il Monitoraaggio della CPU (per Linux).
+- Versione 9.0.5 : Migliorata gestione dei processi su Windows.
+- Versione 9.0.6 : Miglioramento di System Advance per Windows.
+- Versione 9.0.7 : Migliorata la gestione generale di System Advance per Windows.
+- Versione 9.1 : Introdotta una funzionalità che permette di definire la password dell'utente per la connessione SSH all'interno del file [config](./config.py).
 
 <!-- markdownlint-enable MD033 -->
 

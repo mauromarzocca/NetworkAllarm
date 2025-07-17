@@ -6,12 +6,14 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
-from config import cartella_log, nome_file
+from config import cartella_log, nome_file, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import mysql.connector
 import ipaddress
 import paramiko
+import re
+import json
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
@@ -902,7 +904,7 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) eliminato con successo!", update.effective_chat.id)
 
         context.user_data['azione'] = None
-    
+
     if 'system_advance' in context.user_data:
         fase = context.user_data['system_advance']['fase']
         if fase == 'username':
@@ -911,12 +913,34 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
             indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
             username = context.user_data['system_advance']['username']
-            result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, None, chiedi_password=True)
-            if result == "auth_failed":
-                context.user_data['system_advance']['fase'] = 'password'
-                await invia_messaggio("Connessione tramite chiave SSH fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+
+            # Prima di chiedere la password, verifica se esiste una password salvata
+            password_salvata = None
+            if indirizzo_ip in credenziali:
+                if credenziali[indirizzo_ip]["username"] == username:
+                    password_salvata = credenziali[indirizzo_ip]["password"]
+
+            if password_salvata:
+                # Tenta la connessione con la password salvata
+                result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password_salvata, chiedi_password=False)
+                if result == "auth_failed_windows":
+                    context.user_data['system_advance']['fase'] = 'windows'
+                    await invia_messaggio("Autenticazione SSH fallita. Vuoi provare l'autenticazione Windows?\nRispondi con 'si' per continuare o 'no' per annullare.", update.effective_chat.id)
+                elif result == "auth_failed":
+                    # Connessione fallita, chiedi la password all'utente
+                    context.user_data['system_advance']['fase'] = 'password'
+                    await invia_messaggio("Connessione tramite chiave SSH e password salvata fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+                else:
+                    # Connessione riuscita, elimina il contesto
+                    del context.user_data['system_advance']
             else:
-                del context.user_data['system_advance']
+                # Nessuna password salvata, prova con la chiave SSH
+                result = await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, None, chiedi_password=True)
+                if result == "auth_failed":
+                    context.user_data['system_advance']['fase'] = 'password'
+                    await invia_messaggio("Connessione tramite chiave SSH fallita.\nInserisci la password per la connessione SSH:", update.effective_chat.id)
+                else:
+                    del context.user_data['system_advance']
             return
         elif fase == 'password':
             username = context.user_data['system_advance']['username']
@@ -965,101 +989,158 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             ssh.connect(indirizzo_ip, username=username, timeout=5)
         else:
             ssh.connect(indirizzo_ip, username=username, password=password, timeout=5)
-        
-        # Rileva sistema operativo remoto
+
         stdin, stdout, stderr = ssh.exec_command('uname', timeout=5)
         os_type = stdout.read().decode(errors="ignore").strip().lower()
         is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
 
         if is_windows:
-            comandi = {
-                "uptime": "net stats srv | findstr /C:\"Statistica dal\"",
-                "ram_swap": "wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value",
-                "processi": "tasklist /FO TABLE /NH",
-                "disco": "wmic logicaldisk get size,freespace,caption"
-            }
-        else:
-            comandi = {
-                "uptime": "uptime -s",
-                "ram_swap": "free -h",
-                "processi": "ps aux --sort=-%mem | head -n 11",
-                "disco": "df -h"
-            }
+            # UPTIME
+            stdin, stdout, stderr = ssh.exec_command(
+                'powershell -Command "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime"', timeout=10)
+            output = stdout.read().decode(errors="ignore").strip()
+            match = re.search(r'(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})', output)
+            data_avvio = match.group(1) if match else output or "dato non disponibile"
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data_avvio}`", chat_id)
 
-        # UPTIME
-        stdin, stdout, stderr = ssh.exec_command(comandi["uptime"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if is_windows:
-            # net stats srv | findstr /C:"Statistica dal"
+            # RAM
+            stdin, stdout, stderr = ssh.exec_command(
+                'powershell -Command "$mem = Get-CimInstance Win32_OperatingSystem; $mem.TotalVisibleMemorySize, $mem.FreePhysicalMemory"', timeout=10)
+            output = stdout.read().decode(errors="ignore").strip()
             if output:
-                # Esempio output: Statistica dal 15/07/2025 10:23:45
-                data = output.split("dal")[-1].strip() if "dal" in output else output
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data}`", chat_id)
+                try:
+                    total, free = map(lambda x: int(x) / 1024 / 1024, output.split())
+                    used = total - free
+                    msg = f"Memoria Totale: {total:.2f} GB\nLibera: {free:.2f} GB\nUsata: {used:.2f} GB\nSWAP: N/D"
+                except Exception:
+                    msg = "Dati RAM non disponibili"
             else:
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
-        else:
-            # uptime -s -> 2025-07-15 10:23:45
-            if output:
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
-            else:
-                await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
+                msg = "Dati RAM non disponibili"
 
-        # RAM/SWAP
-        stdin, stdout, stderr = ssh.exec_command(comandi["ram_swap"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if is_windows:
-            # wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value
-            # Output esempio:
-            # FreePhysicalMemory=1234567
-            # TotalVisibleMemorySize=3456789
+            # CPU Usage migliorato (con fallback completo)
+            cpu_usage = None
+            try:
+                # Metodo 1: Get-CimInstance (Windows 11)
+                stdin, stdout, stderr = ssh.exec_command(
+                    "powershell -Command \"$cpu = Get-CimInstance Win32_Processor; $cpu.LoadPercentage\"", timeout=10)
+                cpu_output = stdout.read().decode(errors="ignore").strip()
+                cpu_values = [float(x.strip()) for x in cpu_output.split() if x.strip().replace('.', '', 1).isdigit()]
+                if cpu_values:
+                    cpu_usage = sum(cpu_values) / len(cpu_values)
+                else:
+                    # Metodo 2: Get-Counter (Windows 10/11 compatibile)
+                    stdin, stdout, stderr = ssh.exec_command(
+                        "powershell -Command \"(Get-Counter '\\\\Processor(_Total)\\% Processor Time').CounterSamples.CookedValue\"", timeout=15)
+                    cpu_output = stdout.read().decode(errors="ignore").strip()
+                    if cpu_output:
+                        cpu_usage = float(cpu_output)
+                    else:
+                        # Metodo 3: typeperf (ultimo fallback)
+                        stdin, stdout, stderr = ssh.exec_command(
+                            "powershell -Command \"typeperf '\\\\Processor(_Total)\\% Processor Time' -sc 1\"", timeout=15)
+                        cpu_output = stdout.read().decode(errors="ignore").strip()
+                        match = re.search(r'(\d+\.\d+),$', cpu_output, re.MULTILINE)
+                        if match:
+                            cpu_usage = float(match.group(1))
+            except Exception as e:
+                print("Errore CPU:", repr(e))
+
+            cpu_msg = f"CPU Usage: {cpu_usage:.2f}%" if cpu_usage is not None else "CPU Usage: dati non disponibili"
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
+
+            # PROCESSI (Top 10 per CPU + RAM)
+            stdin, stdout, stderr = ssh.exec_command(
+                'powershell -Command "Get-Process | Select-Object Name, Id, WorkingSet, CPU | Sort-Object { $_.CPU + $_.WorkingSet } -Descending | Select-Object -First 10 | ConvertTo-Json"',
+                timeout=15
+            )
+
+            output = stdout.read().decode(errors="ignore").strip()
+            error = stderr.read().decode(errors="ignore").strip()
+
+            if error:
+                print(f"[Errore PowerShell]: {error}")
+
+            if not output:
+                msg_proc = "Dati non disponibili"
+            else:
+                try:
+                    processes = json.loads(output)
+                    if isinstance(processes, dict):
+                        processes = [processes]
+
+                    msg_proc = "Top 10 processi per uso combinato di CPU e RAM:\n"
+                    for p in processes:
+                        name = p["Name"]
+                        pid = p["Id"]
+                        mem = int(p["WorkingSet"])
+                        cpu = float(p["CPU"])
+                        msg_proc += f"{name} (PID {pid}) - RAM: {mem / (1024 ** 3):.2f} GB | CPU: {cpu:.2f}s\n"
+
+                except Exception as e:
+                    print(f"[Errore parsing JSON]: {e}")
+                    msg_proc = "Dati non disponibili"
+
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
+
+            # DISCO (con fallback su PowerShell)
+            stdin, stdout, stderr = ssh.exec_command(
+                'powershell -Command "Get-CimInstance Win32_LogicalDisk -Filter \\\"DriveType=3\\\" | ForEach-Object { \\\"$($_.DeviceID), $($_.Size), $($_.FreeSpace)\\\" }"', timeout=10)
+            output = stdout.read().decode(errors="ignore").strip()
             lines = output.splitlines()
-            mem = {}
+            msg_disco = "Spazio disco (GB):\n"
             for line in lines:
-                if "=" in line:
-                    k, v = line.split("=")
-                    mem[k.strip()] = int(v.strip())
-            if "FreePhysicalMemory" in mem and "TotalVisibleMemorySize" in mem:
-                total = mem["TotalVisibleMemorySize"] / 1024 / 1024
-                free = mem["FreePhysicalMemory"] / 1024 / 1024
-                used = total - free
-                msg = f"Mem       Total: {total:.2f} GB  Disp: {free:.2f} GB   Used: {used:.2f} GB\n"
-                msg += "SWAP         Total: N/D  Disp: N/D   Used: N/D"
-            else:
-                msg = output or "Dati RAM non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
-        else:
-            # free -h
-            # Output esempio:
-            #               total        used        free      shared  buff/cache   available
-            # Mem:           7,7G        2,1G        3,2G        123M        2,4G        5,2G
-            # Swap:          2,0G        0B          2,0G
-            lines = output.splitlines()
-            mem_line = next((l for l in lines if l.lower().startswith("mem:")), None)
-            swap_line = next((l for l in lines if l.lower().startswith("swap:")), None)
-            if mem_line and swap_line:
-                mem_vals = mem_line.split()
-                swap_vals = swap_line.split()
-                msg = f"Mem       Total: {mem_vals[1]}  Used: {mem_vals[2]}  Disp: {mem_vals[6] if len(mem_vals)>6 else mem_vals[3]}\n"
-                msg += f"SWAP         Total: {swap_vals[1]}  Used: {swap_vals[2]}  Disp: {swap_vals[3] if len(swap_vals)>3 else swap_vals[1]}"
-            else:
-                msg = output or "Dati RAM non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+                if "," in line:
+                    try:
+                        drive, size, free = map(str.strip, line.split(",", 2))
+                        size_gb = int(size) / (1024 ** 3)
+                        free_gb = int(free) / (1024 ** 3)
+                        used_gb = size_gb - free_gb
+                        msg_disco += f"{drive}: Totale {size_gb:.2f} GB | Usato {used_gb:.2f} GB | Libero {free_gb:.2f} GB\n"
+                    except Exception as e:
+                        print("Errore parsing disco:", repr(e))
+                        continue
+            if msg_disco.strip() == "Spazio disco (GB):":
+                msg_disco += "Nessun disco rilevato o dati non disponibili"
+            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
 
-        # PROCESSI
-        stdin, stdout, stderr = ssh.exec_command(comandi["processi"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if output:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output}\n```", chat_id)
         else:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi: dati non disponibili", chat_id)
+            # Parte Linux invariata
+            stdin, stdout, stderr = ssh.exec_command("uptime -s", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output or 'dato non disponibile'}`", chat_id)
 
-        # DISCO
-        stdin, stdout, stderr = ssh.exec_command(comandi["disco"], timeout=10)
-        output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-        if output:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output}\n```", chat_id)
-        else:
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco: dati non disponibili", chat_id)
+            stdin, stdout, stderr = ssh.exec_command("top -bn1 | grep '%Cpu(s)'", timeout=10)
+            cpu_output = stdout.read().decode(errors="ignore").strip()
+            cpu_usage = None
+            if cpu_output:
+                match = re.search(r'(\d+\.\d+)\s*id', cpu_output)
+                if match:
+                    try:
+                        idle = float(match.group(1))
+                        cpu_usage = 100.0 - idle
+                    except Exception:
+                        cpu_usage = None
+            if cpu_usage is not None:
+                cpu_msg = f"CPU Usage: {cpu_usage:.2f}%"
+            else:
+                cpu_msg = "CPU Usage: dati non disponibili"
+
+            stdin, stdout, stderr = ssh.exec_command("free -h", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{output or 'Dati RAM non disponibili'}\n{cpu_msg}", chat_id)
+
+            stdin, stdout, stderr = ssh.exec_command("ps aux --sort=-%mem | head -n 11", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
+
+            stdin, stdout, stderr = ssh.exec_command("df -h -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs -x ramfs", timeout=10)
+            output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
 
         ssh.close()
     except paramiko.AuthenticationException:
@@ -1071,6 +1152,9 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             await invia_messaggio("Autenticazione SSH fallita anche con credenziali Windows.", chat_id)
             return
     except Exception as e:
+        import traceback
+        print("Eccezione SSH:", repr(e))
+        traceback.print_exc()
         if "timed out" in str(e).lower():
             await invia_messaggio(
                 "Errore di timeout nella connessione SSH.\n"
@@ -1081,7 +1165,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 chat_id
             )
         else:
-            await invia_messaggio(f"Errore SSH: {e}", chat_id)
+            await invia_messaggio(f"Errore SSH: {repr(e)}", chat_id)
         return
     return "ok"
 

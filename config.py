@@ -19,6 +19,11 @@ indirizzi_ping = [
     #{'nome': 'Dispositivo2', 'indirizzo': '192.168.1.2'},
 ]
 
+credenziali = {
+    "192.168.1.101": {"username": "Administrator", "password": "password"},
+    "192.168.1.102": {"username": "User", "password": "password"}
+}
+
 # Credenziali MySQL
 DB_USER = 'tuo_utente'
 DB_PASSWORD = 'tua_password'
