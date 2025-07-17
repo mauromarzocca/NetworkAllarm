@@ -967,36 +967,21 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         else:
             ssh.connect(indirizzo_ip, username=username, password=password, timeout=5)
         
-        # Rileva sistema operativo remoto
         stdin, stdout, stderr = ssh.exec_command('uname', timeout=5)
         os_type = stdout.read().decode(errors="ignore").strip().lower()
         is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
 
         if is_windows:
-            # UPTIME (PowerShell, formato leggibile)
+            # UPTIME
             stdin, stdout, stderr = ssh.exec_command(
                 'powershell -Command "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime"', timeout=10)
             output = stdout.read().decode(errors="ignore").strip()
-            # Esempio output: 16/07/2025 08:12:34
-            if output:
-                try:
-                    # Prova a formattare la data
-                    match = re.search(r'(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})', output)
-                    if match:
-                        data_avvio = match.group(1)
-                        await invia_messaggio(
-                            f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data_avvio}`", chat_id)
-                    else:
-                        await invia_messaggio(
-                            f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
-                except Exception:
-                    await invia_messaggio(
-                        f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output}`", chat_id)
-            else:
-                await invia_messaggio(
-                    f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: dato non disponibile", chat_id)
+            match = re.search(r'(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})', output)
+            data_avvio = match.group(1) if match else output or "dato non disponibile"
+            await invia_messaggio(
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{data_avvio}`", chat_id)
 
-            # RAM/SWAP
+            # RAM
             stdin, stdout, stderr = ssh.exec_command(
                 'wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /Value', timeout=10)
             output = stdout.read().decode(errors="ignore").strip()
@@ -1016,10 +1001,10 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             else:
                 msg = output or "Dati RAM non disponibili"
 
-            # CPU Usage (Windows)
-            # Provo con un comando PowerShell singolo per ottenere la percentuale di CPU
+            # CPU Usage migliorato
             stdin, stdout, stderr = ssh.exec_command(
-                "powershell -Command \"(Get-Counter '\\\\Processor(_Total)\\\\% Processor Time').CounterSamples[0].CookedValue\"", timeout=10)
+                "powershell -Command \"Get-Counter '\\\\Processor(_Total)\\\\% Processor Time' -SampleInterval 1 -MaxSamples 1 | "
+                "Select-Object -ExpandProperty CounterSamples | Select-Object -ExpandProperty CookedValue\"", timeout=10)
             cpu_output = stdout.read().decode(errors="ignore").strip()
             try:
                 cpu_usage = float(cpu_output)
@@ -1030,34 +1015,27 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
 
-            # PROCESSI (Top 10 per uso RAM)
-            # tasklist /FO CSV /NH restituisce: "Image Name","PID","Session Name","Session#","Mem Usage"
+            # PROCESSI aggiornato (con nomi e RAM)
             stdin, stdout, stderr = ssh.exec_command(
-                'wmic process get ProcessId,WorkingSetSize,Name /format:csv', timeout=15)
-            output = stdout.read().decode(errors="ignore")
+                'powershell -Command "Get-Process | Select-Object Name, Id, WorkingSet | Sort-Object WorkingSet -Descending | Select-Object -First 10"', timeout=15)
+            output = stdout.read().decode(errors="ignore").strip()
             lines = output.splitlines()
-            processi = []
-            for line in lines[1:]:
-                parts = line.split(',')
-                if len(parts) >= 4:
+            msg_proc = "Top 10 processi per uso RAM:\n"
+            for line in lines[3:]:  # Skip intestazione
+                parts = re.split(r'\s{2,}', line.strip())
+                if len(parts) == 3:
+                    name, pid, mem = parts
                     try:
-                        name = parts[-1].strip()
-                        pid = parts[-2].strip()
-                        mem = int(parts[-3].strip()) if parts[-3].strip().isdigit() else 0
-                        processi.append((name, pid, mem))
+                        mem = int(mem)
+                        msg_proc += f"{name} (PID {pid}) - {mem / 1024 / 1024:.2f} GB\n"
                     except Exception:
                         continue
-            # Ordina per memoria decrescente e prendi i primi 10
-            processi = sorted(processi, key=lambda x: x[2], reverse=True)[:10]
-            msg_proc = "Top 10 processi per uso RAM:\n"
-            for name, pid, mem in processi:
-                msg_proc += f"{name} (PID {pid}) - {mem/1024/1024:.2f} GB\n"
-            if not processi:
+            if msg_proc.strip() == "Top 10 processi per uso RAM:":
                 msg_proc += "Dati non disponibili"
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
 
-            # DISCO (Espresso in GB)
+            # DISCO
             stdin, stdout, stderr = ssh.exec_command(
                 'wmic logicaldisk get Caption,Size,FreeSpace', timeout=10)
             output = stdout.read().decode(errors="ignore").strip()
@@ -1077,18 +1055,16 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
 
         else:
-            # Linux: mantiene la logica attuale
+            # Parte Linux invariata
             stdin, stdout, stderr = ssh.exec_command("uptime -s", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output or 'dato non disponibile'}`", chat_id)
 
-            # CPU Usage (Linux)
             stdin, stdout, stderr = ssh.exec_command("top -bn1 | grep '%Cpu(s)'", timeout=10)
             cpu_output = stdout.read().decode(errors="ignore").strip()
             cpu_usage = None
             if cpu_output:
-                # Example output: "%Cpu(s):  3.0 us,  1.0 sy,  0.0 ni, 95.7 id,  0.3 wa,  0.0 hi,  0.0 si,  0.0 st"
                 match = re.search(r'(\d+\.\d+)\s*id', cpu_output)
                 if match:
                     try:
@@ -1112,7 +1088,6 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nTop 10 processi:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
 
             stdin, stdout, stderr = ssh.exec_command("df -h -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs -x ramfs", timeout=10)
-            #stdin, stdout, stderr = ssh.exec_command("df -h", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nSpazio disco:\n```\n{output or 'Dati non disponibili'}\n```", chat_id)
