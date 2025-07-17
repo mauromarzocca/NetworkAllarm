@@ -1015,8 +1015,20 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 msg = f"Memoria Totale: {total:.2f} GB\nLibera: {free:.2f} GB\nUsata: {used:.2f} GB\nSWAP: N/D"
             else:
                 msg = output or "Dati RAM non disponibili"
+
+            # CPU Usage (Windows)
+            # Provo con un comando PowerShell singolo per ottenere la percentuale di CPU
+            stdin, stdout, stderr = ssh.exec_command(
+                "powershell -Command \"(Get-Counter '\\\\Processor(_Total)\\\\% Processor Time').CounterSamples[0].CookedValue\"", timeout=10)
+            cpu_output = stdout.read().decode(errors="ignore").strip()
+            try:
+                cpu_usage = float(cpu_output)
+                cpu_msg = f"CPU Usage: {cpu_usage:.2f}%"
+            except Exception:
+                cpu_msg = "CPU Usage: dati non disponibili"
+
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}\n{cpu_msg}", chat_id)
 
             # PROCESSI (Top 10 per uso RAM)
             # tasklist /FO CSV /NH restituisce: "Image Name","PID","Session Name","Session#","Mem Usage"
@@ -1071,10 +1083,28 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             await invia_messaggio(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\nOnline da: `{output or 'dato non disponibile'}`", chat_id)
 
+            # CPU Usage (Linux)
+            stdin, stdout, stderr = ssh.exec_command("top -bn1 | grep '%Cpu(s)'", timeout=10)
+            cpu_output = stdout.read().decode(errors="ignore").strip()
+            cpu_usage = None
+            if cpu_output:
+                # Example output: "%Cpu(s):  3.0 us,  1.0 sy,  0.0 ni, 95.7 id,  0.3 wa,  0.0 hi,  0.0 si,  0.0 st"
+                match = re.search(r'(\d+\.\d+)\s*id', cpu_output)
+                if match:
+                    try:
+                        idle = float(match.group(1))
+                        cpu_usage = 100.0 - idle
+                    except Exception:
+                        cpu_usage = None
+            if cpu_usage is not None:
+                cpu_msg = f"CPU Usage: {cpu_usage:.2f}%"
+            else:
+                cpu_msg = "CPU Usage: dati non disponibili"
+
             stdin, stdout, stderr = ssh.exec_command("free -h", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
             await invia_messaggio(
-                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{output or 'Dati RAM non disponibili'}", chat_id)
+                f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{output or 'Dati RAM non disponibili'}\n{cpu_msg}", chat_id)
 
             stdin, stdout, stderr = ssh.exec_command("ps aux --sort=-%mem | head -n 11", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
