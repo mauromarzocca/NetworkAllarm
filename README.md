@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 9.1
+Versione : 9.2
 
 ![logo](/img/logo.png)
 
@@ -421,6 +421,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 9.0.6 : Miglioramento di System Advance per Windows.
 - Versione 9.0.7 : Migliorata la gestione generale di System Advance per Windows.
 - Versione 9.1 : Introdotta una funzionalità che permette di definire la password dell'utente per la connessione SSH all'interno del file [config](./config.py).
+- Versione 9.2 : Introdotto un filtro per i FileSystem ed i Dischi da monitorare. In assenza, mostrerà tutti quelli disponibili.
 
 <!-- markdownlint-enable MD033 -->
 
