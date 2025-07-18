@@ -23,6 +23,10 @@ credenziali = {
     "192.168.1.101": {"username": "Administrator", "password": "password"},
     "192.168.1.102": {"username": "User", "password": "password"}
 }
+fs_monitor = {
+    "192.168.1.101": "/dev/sda1,/dev/sdb1",
+    "192.168.1.102": "C:,D:",
+}
 
 # Credenziali MySQL
 DB_USER = 'tuo_utente'
