@@ -2,12 +2,11 @@ import os
 from datetime import datetime
 
 # Configurazione del logging
-anno_corrente = datetime.now().strftime('%Y')
-mese_corrente = datetime.now().strftime('%m')
-data_corrente = datetime.now().strftime("%Y-%m-%d")
+# Le variabili di data sono state rimosse per evitare valori obsoleti in processi a lunga esecuzione.
+# Vengono calcolate dinamicamente in main.py
 
-cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-nome_file = f"{cartella_log}/{data_corrente}.txt"
+cartella_log_base = 'log'
+# Nota: La sottocartella anno/mese viene gestita dinamicamente
 
 # Configurazione del bot
 bot_token = 'IL_TUO_BOT_TOKEN'

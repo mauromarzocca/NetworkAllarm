@@ -6,7 +6,7 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
-from config import cartella_log, nome_file, credenziali
+from config import cartella_log_base, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import mysql.connector
@@ -15,11 +15,15 @@ import paramiko
 import re
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
 DB_USER = config.DB_USER
 DB_PASSWORD = config.DB_PASSWORD
+
+# Executor per task bloccanti
+executor = ThreadPoolExecutor(max_workers=10)
 
 def create_database_if_not_exists():
     #Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
@@ -117,8 +121,16 @@ create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
-# Utilizza la cartella dei log definita in config.py
-log_file = os.path.join(cartella_log, nome_file)
+def get_current_log_path():
+    anno_corrente = datetime.now().strftime('%Y')
+    mese_corrente = datetime.now().strftime('%m')
+    data_corrente = datetime.now().strftime("%Y-%m-%d")
+
+    cartella_log = os.path.join(cartella_log_base, anno_corrente, mese_corrente)
+    if not os.path.exists(cartella_log):
+        os.makedirs(cartella_log)
+
+    return os.path.join(cartella_log, f"{data_corrente}.txt")
 
 def recupera_dispositivi_in_manutenzione():
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -186,22 +198,8 @@ async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
     except Exception as e:
         print(f"Errore durante la modifica del messaggio: {e}")
 
-# Funzione per controllare lo stato della connessione
-def controlla_connessione(indirizzo):
-    # Verifica se il dispositivo è in stato di manutenzione
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
-    cursor.execute(query, (indirizzo,))
-    stato_manutenzione = cursor.fetchone()
-    cursor.close()
-    cnx.close()
-
-    if stato_manutenzione and stato_manutenzione[0]:
-        print(f"Il dispositivo {indirizzo} è in stato di manutenzione, non effettuo il controllo di connessione.")
-        return True  # Ritorna True per indicare che il dispositivo è in stato di manutenzione
-
-    # Effettua il controllo di connessione
+# Funzione sincrona per eseguire il ping (bloccante)
+def _esegui_ping_sync(indirizzo):
     comando_ping = ['ping', '-c', '1', indirizzo]
     try:
         output = subprocess.check_output(comando_ping, stderr=subprocess.STDOUT)
@@ -213,20 +211,41 @@ def controlla_connessione(indirizzo):
     except Exception as e:
         print(f"Errore durante il ping per {indirizzo}: {e}")
         return False
+
+# Funzione asincrona che wrappa il ping sincrono
+async def controlla_connessione(indirizzo):
+    # Verifica se il dispositivo è in stato di manutenzione
+    # Utilizziamo run_in_executor anche per il DB qui per non bloccare se il DB è lento (opzionale ma consigliato)
+    loop = asyncio.get_running_loop()
+
+    def check_maintenance():
+        try:
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
+            cursor.execute(query, (indirizzo,))
+            stato_manutenzione = cursor.fetchone()
+            cursor.close()
+            cnx.close()
+            return stato_manutenzione and stato_manutenzione[0]
+        except Exception as e:
+            print(f"Errore verifica manutenzione: {e}")
+            return False
+
+    is_maintenance = await loop.run_in_executor(executor, check_maintenance)
+
+    if is_maintenance:
+        print(f"Il dispositivo {indirizzo} è in stato di manutenzione, non effettuo il controllo di connessione.")
+        return True  # Ritorna True per indicare che il dispositivo è in stato di manutenzione
+
+    # Effettua il controllo di connessione in un thread separato
+    return await loop.run_in_executor(executor, _esegui_ping_sync, indirizzo)
     
 # Funzione per scrivere l'orario e il tipo di evento in un file di log
 def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     ora_evento = datetime.now().strftime('%H:%M:%S')
-    anno_corrente = datetime.now().strftime('%Y')
-    mese_corrente = datetime.now().strftime('%m')
-    data_corrente = datetime.now().strftime("%Y-%m-%d")
     
-    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
-
-    if not os.path.exists(cartella_log):
-        os.makedirs(cartella_log)
-    
-    nome_file = f"{cartella_log}/{data_corrente}.txt"
+    nome_file = get_current_log_path()
     
     if nome_dispositivo and indirizzo_ip:
         evento = f"{ora_evento} - {tipo_evento} - {nome_dispositivo} ({indirizzo_ip})"
@@ -253,7 +272,7 @@ async def invia_contenuto_file():
     anno_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y')
     mese_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%m')
     
-    cartella_log = os.path.join('log', anno_precedente, mese_precedente)
+    cartella_log = os.path.join(cartella_log_base, anno_precedente, mese_precedente)
     
     nome_file = f"{cartella_log}/{data_precedente}.txt"
 
@@ -301,7 +320,7 @@ async def invia_log_corrente(chat_id):
     anno_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y')
     mese_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%m')
     
-    cartella_log = os.path.join('log', anno_corrente, mese_corrente)
+    cartella_log = os.path.join(cartella_log_base, anno_corrente, mese_corrente)
     nome_file = f"{cartella_log}/{data_corrente}.txt"
     
     try:
@@ -712,7 +731,8 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
             stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : Manutenzione")
         else:
             print(f"Verifica connessione per {nome_dispositivo} ({indirizzo_ip})")
-            stato = "Online" if controlla_connessione(indirizzo_ip) else "Offline"
+            # Usa await qui perché controlla_connessione è ora asincrona
+            stato = "Online" if await controlla_connessione(indirizzo_ip) else "Offline"
             stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato}")
 
     messaggio = "\n".join(stati_connessioni)
@@ -773,7 +793,7 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Esegui un ping all'indirizzo IP
-        if controlla_connessione(indirizzo_ip):
+        if await controlla_connessione(indirizzo_ip):
             stato_manutenzione = False
             await invia_messaggio(f"✅ Connessione riuscita con {nome_dispositivo} ({indirizzo_ip}). Aggiungendo al database...", update.effective_chat.id)
         else:
@@ -859,7 +879,7 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             # Esegui un ping all'indirizzo IP
-            if controlla_connessione(nuovo_indirizzo_ip):
+            if await controlla_connessione(nuovo_indirizzo_ip):
                 stato_manutenzione = False
                 await invia_messaggio(f"✅ Connessione riuscita con {nuovo_nome} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
             else:
@@ -980,9 +1000,12 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del context.user_data['system_advance']
             return
 
-# Modifica la funzione esegui_system_advance per distinguere errore Windows
-async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=True):
-    chat_id = update.effective_chat.id
+def _esegui_system_advance_sync(chat_id, nome_dispositivo, indirizzo_ip, username, password, chiedi_password):
+    # Questa funzione contiene la logica bloccante SSH di esegui_system_advance
+    # Ritorna messaggi da inviare o status code
+    messaggi_da_inviare = []
+    status = "ok"
+
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -995,11 +1018,10 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
         os_type = stdout.read().decode(errors="ignore").strip().lower()
         is_windows = not os_type or "windows" in os_type or "windows_nt" in os_type
 
-        # Carica fs_monitor da config.py
-        try:
-            from config import fs_monitor
-        except ImportError:
-            fs_monitor = {}
+        # Carica fs_monitor da config.py (già importato globalmente o passato come argomento se serve)
+        # fs_monitor è in config.py che è importato
+        # Usa getattr per sicurezza
+        fs_monitor = getattr(config, 'fs_monitor', {})
 
         if is_windows:
             # UPTIME
@@ -1008,9 +1030,9 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             output = stdout.read().decode(errors="ignore").strip()
             match = re.search(r'(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})', output)
             data_avvio = match.group(1) if match else output or "dato non disponibile"
-            await invia_messaggio(
+            messaggi_da_inviare.append(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
-                f"Online da: `{data_avvio}`", chat_id)
+                f"Online da: `{data_avvio}`")
 
             # RAM
             stdin, stdout, stderr = ssh.exec_command(
@@ -1028,7 +1050,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                     msg = "Dati RAM non disponibili"
             else:
                 msg = "Dati RAM non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}", chat_id)
+            messaggi_da_inviare.append(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg}")
 
             # CPU Usage migliorato (con fallback completo)
             cpu_usage = None
@@ -1058,7 +1080,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
             except Exception as e:
                 logging.error("Errore CPU: %s", repr(e))
             cpu_msg = f"CPU Usage: {cpu_usage:.2f}%" if cpu_usage is not None else "CPU Usage: dati non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{cpu_msg}", chat_id)
+            messaggi_da_inviare.append(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{cpu_msg}")
 
             # PROCESSI (Top 10 per CPU + RAM)
             stdin, stdout, stderr = ssh.exec_command(
@@ -1086,7 +1108,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 except Exception as e:
                     logging.error(f"[Errore parsing JSON]: {e}")
                     msg_proc = "Dati non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}", chat_id)
+            messaggi_da_inviare.append(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_proc}")
 
             # DISCO (con filtro su fs_monitor)
             fs_to_monitor = fs_monitor.get(indirizzo_ip, None)
@@ -1112,15 +1134,15 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                         continue
             if msg_disco.strip() == "Spazio disco (GB):":
                 msg_disco += "Nessun disco rilevato o dati non disponibili"
-            await invia_messaggio(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}", chat_id)
+            messaggi_da_inviare.append(f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n{msg_disco}")
 
         else:
             # Parte Linux
             stdin, stdout, stderr = ssh.exec_command("uptime -s", timeout=10)
             output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-            await invia_messaggio(
+            messaggi_da_inviare.append(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
-                f"Online da: `{output or 'dato non disponibile'}`", chat_id)
+                f"Online da: `{output or 'dato non disponibile'}`")
 
             stdin, stdout, stderr = ssh.exec_command("top -bn1 | grep '%Cpu(s)'", timeout=10)
             cpu_output = stdout.read().decode(errors="ignore").strip()
@@ -1139,17 +1161,17 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 cpu_msg = "CPU Usage: dati non disponibili"
             stdin, stdout, stderr = ssh.exec_command("free -h", timeout=10)
             ram_output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-            await invia_messaggio(
+            messaggi_da_inviare.append(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
                 f"{ram_output or 'Dati RAM non disponibili'}\n"
-                f"{cpu_msg}", chat_id)
+                f"{cpu_msg}")
 
             stdin, stdout, stderr = ssh.exec_command("ps aux --sort=-%mem | head -n 11", timeout=10)
             proc_output = stdout.read().decode(errors="ignore").strip() or stderr.read().decode(errors="ignore").strip()
-            await invia_messaggio(
+            messaggi_da_inviare.append(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
                 f"Top 10 processi:\n"
-                f"```\n{proc_output or 'Dati non disponibili'}\n```", chat_id)
+                f"```\n{proc_output or 'Dati non disponibili'}\n```")
 
             # DISCO (con filtro su fs_monitor)
             fs_to_monitor = fs_monitor.get(indirizzo_ip, None)
@@ -1166,37 +1188,54 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
                 if error and not output:
                     output = error  # Mostra l'errore ma non blocca
 
-            await invia_messaggio(
+            messaggi_da_inviare.append(
                 f"🖥️ *{nome_dispositivo}* ({indirizzo_ip})\n"
                 f"Spazio disco:\n"
-                f"```\n{output or 'Dati non disponibili'}\n```", chat_id)
+                f"```\n{output or 'Dati non disponibili'}\n```")
 
         ssh.close()
     except paramiko.AuthenticationException:
         if chiedi_password:
-            return "auth_failed"
+            status = "auth_failed"
         else:
             if "\\" not in username and "@" not in username:
-                return "auth_failed_windows"
-            await invia_messaggio("Autenticazione SSH fallita anche con credenziali Windows.", chat_id)
-            return
+                status = "auth_failed_windows"
+            else:
+                messaggi_da_inviare.append("Autenticazione SSH fallita anche con credenziali Windows.")
     except Exception as e:
-        import traceback
         logging.error("Eccezione SSH: %s", repr(e))
-        traceback.print_exc()
         if "timed out" in str(e).lower():
-            await invia_messaggio(
+            messaggi_da_inviare.append(
                 "Errore di timeout nella connessione SSH.\n"
                 "Se il dispositivo è Windows, verifica che il servizio OpenSSH sia attivo e la porta 22 sia raggiungibile.\n"
                 "Per abilitare SSH su Windows:\n"
                 "1. Apri 'Servizi' e avvia 'OpenSSH Server'.\n"
-                "2. Assicurati che la porta 22 sia aperta nel firewall.",
-                chat_id
+                "2. Assicurati che la porta 22 sia aperta nel firewall."
             )
         else:
-            await invia_messaggio(f"Errore SSH: {repr(e)}", chat_id)
-        return
-    return "ok"
+            messaggi_da_inviare.append(f"Errore SSH: {repr(e)}")
+
+    return status, messaggi_da_inviare
+
+# Modifica la funzione esegui_system_advance per distinguere errore Windows
+async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=True):
+    chat_id = update.effective_chat.id
+    loop = asyncio.get_running_loop()
+
+    await invia_messaggio(f"⏳ Elaborazione in corso per {nome_dispositivo}...", chat_id)
+
+    # Esegui la parte bloccante in un executor
+    status, messaggi = await loop.run_in_executor(
+        executor,
+        _esegui_system_advance_sync,
+        chat_id, nome_dispositivo, indirizzo_ip, username, password, chiedi_password
+    )
+
+    # Invia i messaggi
+    for msg in messaggi:
+        await invia_messaggio(msg, chat_id)
+
+    return status
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -1308,46 +1347,73 @@ def main():
         tempo_notifica_dispositivo = 1800  # 30 minuti
 
         while True:
-            if not modalita_manutenzione:
-                tutti_offline = True
+            try:
+                if not modalita_manutenzione:
+                    tutti_offline = True
 
-                # Recupera i dispositivi dal database
-                cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-                cursor = cnx.cursor()
-                query = ("SELECT Nome, IP FROM monitor")
-                cursor.execute(query)
-                dispositivi = cursor.fetchall()
-                cursor.close()
-                cnx.close()
+                    # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
+                    # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
+                    try:
+                        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+                        cursor = cnx.cursor()
+                        query = ("SELECT Nome, IP FROM monitor")
+                        cursor.execute(query)
+                        dispositivi = cursor.fetchall()
+                        cursor.close()
+                        cnx.close()
+                    except mysql.connector.Error as err:
+                        print(f"Errore DB in monitoraggio: {err}")
+                        await asyncio.sleep(60)
+                        continue
 
-                for nome_dispositivo, indirizzo_ip in dispositivi:
-                    tentativi = 0
+                    for nome_dispositivo, indirizzo_ip in dispositivi:
+                        tentativi = 0
 
-                    while tentativi < 2:
-                        connessione_attuale = controlla_connessione(indirizzo_ip)
-                        stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
+                        while tentativi < 2:
+                            connessione_attuale = await controlla_connessione(indirizzo_ip)
+                            stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
 
-                        if connessione_attuale:
-                            if stato_precedente is False:  # Se prima era offline e ora è online
-                                if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
+                            if connessione_attuale:
+                                if stato_precedente is False:  # Se prima era offline e ora è online
+                                    if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
+                                        await invia_messaggio(
+                                            f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
+                                            config.chat_id
+                                        )
+                                        scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
+                                    # Rimuovi la notifica di offline se era stata inviata
+                                    ultima_notifica.pop(indirizzo_ip, None)
+                                stato_precedente_connessioni[indirizzo_ip] = True
+                                tutti_offline = False
+                                break
+                            else:
+                                tentativi += 1
+                                await asyncio.sleep(30)
+
+                        if not connessione_attuale:
+                            # Controlla se il dispositivo era online prima
+                            if stato_precedente is not None and stato_precedente:  # Solo se era online prima
+                                # Controlla se la notifica è già stata inviata
+                                if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
+                                    print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                     await invia_messaggio(
-                                        f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
+                                        f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
                                         config.chat_id
                                     )
-                                    scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
-                                # Rimuovi la notifica di offline se era stata inviata
-                                ultima_notifica.pop(indirizzo_ip, None)
-                            stato_precedente_connessioni[indirizzo_ip] = True
-                            tutti_offline = False
-                            break
-                        else:
-                            tentativi += 1
-                            await asyncio.sleep(30)
+                                    # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
+                                    ultima_notifica[indirizzo_ip] = datetime.now()
+                                    # Scrivi il log solo se è la prima volta
+                                    if stato_precedente_connessioni.get(indirizzo_ip, True):
+                                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                        stato_precedente_connessioni[indirizzo_ip] = False
+                                else:
+                                    # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
+                                    pass
+                            stato_precedente_connessioni[indirizzo_ip] = False
 
-                    if not connessione_attuale:
-                        # Controlla se il dispositivo era online prima
-                        if stato_precedente is not None and stato_precedente:  # Solo se era online prima
-                            # Controlla se la notifica è già stata inviata
+                        # Questa logica era stata rimossa erroneamente. La ripristino ora.
+                        if not connessione_attuale and stato_precedente is False:
+                            # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
                             if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
                                 print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                 await invia_messaggio(
@@ -1360,39 +1426,23 @@ def main():
                                 if stato_precedente_connessioni.get(indirizzo_ip, True):
                                     scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                                     stato_precedente_connessioni[indirizzo_ip] = False
-                            else:
-                                # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
-                                pass
-                        stato_precedente_connessioni[indirizzo_ip] = False
 
-                    if not connessione_attuale and stato_precedente is False:
-                        # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
-                        if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
-                            print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
-                            await invia_messaggio(
-                                f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
-                                config.chat_id
-                            )
-                            # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
-                            ultima_notifica[indirizzo_ip] = datetime.now()
-                            # Scrivi il log solo se è la prima volta
-                            if stato_precedente_connessioni.get(indirizzo_ip, True):
-                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                stato_precedente_connessioni[indirizzo_ip] = False
+                    if tutti_offline and not allarme_attivo:
+                        allarme_attivo = True
+                        print("Allarme attivo")
+                    elif not tutti_offline and allarme_attivo:
+                        allarme_attivo = False
+                        print("Allarme disattivo")
 
-                if tutti_offline and not allarme_attivo:
-                    allarme_attivo = True
-                    print("Allarme attivo")
-                elif not tutti_offline and allarme_attivo:
-                    allarme_attivo = False
-                    print("Allarme disattivo")
+                    await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+                    await invia_file_testuale()
 
-                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
-                await invia_file_testuale()
-
-            else:
-                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
-                await invia_file_testuale()
+                else:
+                    await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+                    await invia_file_testuale()
+            except Exception as e:
+                print(f"Errore nel loop di monitoraggio: {e}")
+                await asyncio.sleep(60)
 
     async def avvio_monitoraggio():
         await monitoraggio()
