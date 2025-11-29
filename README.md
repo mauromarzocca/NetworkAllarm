@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 9.3
+Versione : 9.4
 
 ![logo](/img/logo.png)
 
@@ -423,6 +423,7 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 9.1 : Introdotta una funzionalità che permette di definire la password dell'utente per la connessione SSH all'interno del file [config](./config.py).
 - Versione 9.2 : Introdotto un filtro per i FileSystem ed i Dischi da monitorare. In assenza, mostrerà tutti quelli disponibili.
 - Versione 9.3 : Miglioramento generale del codice ed introduzione dinamica del path dei log.
+- Versione 9.4 : Miglioramento della gestione fra il file [main](./main.py) e [config](./config.py).
 
 <!-- markdownlint-enable MD033 -->
 
