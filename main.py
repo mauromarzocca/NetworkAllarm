@@ -32,7 +32,7 @@ def create_database_if_not_exists():
         cnx = mysql.connector.connect(
             user=config.DB_USER,
             password=config.DB_PASSWORD,
-            host='localhost'
+            host=DB_HOST
         )
         cursor = cnx.cursor()
 
