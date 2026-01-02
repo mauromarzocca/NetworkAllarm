@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 9.4.1
+Versione : 10.0
 
 ![logo](/img/logo.png)
 
@@ -10,8 +10,6 @@ Versione : 9.4.1
   - [Indice](#indice)
   - [Introduzione](#introduzione)
   - [Anteprima](#anteprima)
-    - [Pre 6.14](#pre-614)
-    - [6.14](#614)
     - [8.1](#81)
   - [Installazione](#installazione)
   - [Configurazione Manuale](#configurazione-manuale)
@@ -21,6 +19,7 @@ Versione : 9.4.1
     - [NB](#nb)
   - [Utilizzo](#utilizzo)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
+  - [Configurazione a due nodi](#configurazione-a-due-nodi)
   - [Configurazione tramite Script](#configurazione-tramite-script)
     - [NB 2](#nb-2)
   - [Script di Aggiornamento](#script-di-aggiornamento)
@@ -33,6 +32,7 @@ Versione : 9.4.1
     - [Versione 7](#versione-7)
     - [Versione 8](#versione-8)
     - [Versione 9](#versione-9)
+    - [Versione 10](#versione-10)
   - [Licenza](#licenza)
   - [Autori](#autori)
   - [Contribuire](#contribuire)
@@ -51,25 +51,6 @@ Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per
 ---
 
 ## Anteprima
-
-### Pre 6.14
-
-![preview](/img/screenshot.jpeg)
-
----
-
-### 6.14
-
-<!-- markdownlint-disable MD033 -->
-<div align=center>
-
-![preview](/img/6.14.5%20minor.png)
-
----
-
-![preview](/img/6.14.5%20desktop.png)
-
-</div>
 
 ### 8.1
 
@@ -279,6 +260,21 @@ sudo systemctl status networkallarm.service
 
 ---
 
+## Configurazione a due nodi
+
+A partire dalla versione 10, è possibile utilizzare una configurazione a due nodi.
+Si consiglia:
+
+- Connettere i due DB rendendoli entrambi Master in modo tale che siano sincronizzati
+- Montare la directory dei log come path comune fra i due nodi. Non è consigliato condividere l'intera folder in quanto le dipendenze potrebbero avere due architetture distinte.
+
+Occorre posizionare il file [failover-monitor](failover-monitor.py) nel server che gestisce i servizi, ad esempio nel mio caso in un RPI connesso ad un UPS.
+Questo esegue 'curl http://<IP_CONTAINER>: 8081/health' sull'altro nodo, quando riceve un timeout/errore, avvia il servizio su se stesso.
+Tramite il file [notify_switch](notify_switch.py) notifica lo switch.
+Quando curl restituisce 'OK 200', allora stopperà il suo servizio, in quanto è già presente l'altro.
+
+Per questa configurazione si consiglia di non utilizzare il file [check_service](check_service.py) e di configurare i file [failover-monitor](failover-monitor.py) e [notify_switch](notify_switch.py).
+
 ## Configurazione tramite Script
 
 Tramite lo script [configure](configure.py) si procede alla configurazione automatica, dove occorre inserire:
@@ -295,7 +291,8 @@ Questo script effettua il clone di questa repository e verifica eventuali aggior
 
 ### NB 2
 
-Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM occorre rimuovere la riga 'check_and_install('mysql-server')' ed installato manualmente.
+- Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM occorre rimuovere la riga 'check_and_install('mysql-server')' ed installato manualmente.
+- Questo script non consente una configurazione a più nodi. Inoltre è possibile utilizzare il DB solo come localhost.
 
 ---
 
@@ -309,6 +306,7 @@ Questo script deve essere eseguito con i permessi di amministratore.
 ## Test Svolti
 
 I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 e 4 con Ubuntu Server.
+Inoltre, sono stati svolti dei test su un Container Proxmox ed utilizzato in configurazione a due nodi.
 
 ---
 
@@ -425,6 +423,8 @@ I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspb
 - Versione 9.3 : Miglioramento generale del codice ed introduzione dinamica del path dei log.
 - Versione 9.4 : Miglioramento della gestione fra il file [main](./main.py) e [config](./config.py).
 - Versione 9.4.1 : Bug Fix
+
+### Versione 10
 
 <!-- markdownlint-enable MD033 -->
 
