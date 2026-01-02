@@ -19,10 +19,10 @@ STATO_FILE = os.path.join(STATO_DIR, ".ultimo_nodo")
 
 def get_nodo():
     hostname = socket.gethostname()
-    if hostname == "rpi4":
-        return "RPI"
-    elif hostname == "NetworkAllarm":
-        return "Proxmox"
+    if hostname == "first_device":
+        return "First Device"
+    elif hostname == "second_device":
+        return "Second Device"
     else:
         return f"HOST_SCONOSCIUTO({hostname})"
 
