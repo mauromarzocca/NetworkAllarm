@@ -35,6 +35,16 @@ def start_health_server():
     server = HTTPServer(('0.0.0.0', 8081), HealthHandler)
     server.serve_forever()
 
+# Funzione per determinare il nodo corrente
+def get_nodo_corrente():
+    hostname = socket.gethostname()
+    if hostname == "firts_device":
+        return "First Device"
+    elif hostname == "second_device":
+        return "Second Device"
+    else:
+        return f"Host sconosciuto ({hostname})"
+
 # Avvia in un thread separato (all'inizio del programma, dopo gli import)
 threading.Thread(target=start_health_server, daemon=True).start()
 
@@ -459,13 +469,16 @@ def utente_autorizzato(user_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if utente_autorizzato(user.id):
+        nodo = get_nodo_corrente()
+        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
         await update.message.reply_text(
-            'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
-            reply_markup=get_custom_keyboard()
+            messaggio,
+            reply_markup=get_custom_keyboard(),
+            parse_mode="HTML"
         )
     else:
         await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
-
+        
 async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
