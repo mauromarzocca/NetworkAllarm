@@ -17,6 +17,27 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def start_health_server():
+    # Ascolta su TUTTE le interfacce di rete
+    server = HTTPServer(('0.0.0.0', 8081), HealthHandler)
+    server.serve_forever()
+
+# Avvia in un thread separato (all'inizio del programma, dopo gli import)
+threading.Thread(target=start_health_server, daemon=True).start()
+
 DB_HOST = 'localhost'
 DB_NAME = config.DB_NAME
 DB_USER = config.DB_USER
@@ -85,7 +106,7 @@ def create_database_and_table():
         cnx = mysql.connector.connect(
             user=config.DB_USER,
             password=config.DB_PASSWORD,
-            host='localhost',
+            host=DB_HOST,
             database=config.DB_NAME
         )
         cursor = cnx.cursor()
