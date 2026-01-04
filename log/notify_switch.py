@@ -3,7 +3,6 @@
 import os
 import sys
 import socket
-import asyncio
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.dirname(SCRIPT_DIR)
@@ -28,7 +27,11 @@ def get_nodo():
 
 def leggi_ultimo_nodo():
     # Crea la cartella se non esiste (utile al primo avvio)
-    os.makedirs(STATO_DIR, exist_ok=True)
+    try:
+        os.makedirs(STATO_DIR, exist_ok=True)
+    except Exception:
+        pass
+
     if os.path.exists(STATO_FILE):
         try:
             with open(STATO_FILE, "r") as f:
@@ -39,24 +42,59 @@ def leggi_ultimo_nodo():
 
 def salva_ultimo_nodo(nodo):
     # Crea la cartella se non esiste
-    os.makedirs(STATO_DIR, exist_ok=True)
     try:
+        os.makedirs(STATO_DIR, exist_ok=True)
         with open(STATO_FILE, "w") as f:
             f.write(nodo)
     except Exception as e:
-        # Opzionale: logga l'errore
-        pass
+        print(f"Errore salvataggio stato: {e}", file=sys.stderr)
 
-async def main():
-    nodo_corrente = get_nodo()
-    ultimo_nodo = leggi_ultimo_nodo()
+def main():
+    try:
+        nodo_corrente = get_nodo()
+        ultimo_nodo = leggi_ultimo_nodo()
 
-    if nodo_corrente != ultimo_nodo:
-        messaggio = f"Switch su Nodo {nodo_corrente}"
-        utils.scrivi_log(messaggio)
-        await utils.invia_messaggio(messaggio, config.chat_id)
-        salva_ultimo_nodo(nodo_corrente)
-    # else: nessuna azione → nessun log ridondante
+        # Gestione argomenti da linea di comando
+        azione = None
+        if len(sys.argv) > 1:
+            azione = sys.argv[1].upper()
+
+        messaggio = None
+
+        if azione == "START":
+            nodo_attivo = nodo_corrente
+            messaggio = f"Switch su Nodo {nodo_attivo}"
+            salva_ultimo_nodo(nodo_attivo)
+        elif azione == "STOP":
+            if nodo_corrente == "Second Device":
+                nodo_attivo = "First Device"
+            elif nodo_corrente == "First Device":
+                nodo_attivo = "Second Device"
+            else:
+                # Fallback per nodi sconosciuti o configurazioni diverse:
+                # Se stoppiamo su un nodo non identificato (es. backup), assumiamo che si torni al First Device
+                nodo_attivo = "First Device"
+
+            messaggio = f"Switch su Nodo {nodo_attivo}"
+            salva_ultimo_nodo(nodo_attivo)
+        else:
+            # Comportamento legacy basato sul cambio di nodo
+            if nodo_corrente != ultimo_nodo:
+                messaggio = f"Switch su Nodo {nodo_corrente}"
+                salva_ultimo_nodo(nodo_corrente)
+
+        if messaggio:
+            # 2. Scriviamo il log locale
+            try:
+                utils.scrivi_log(messaggio)
+            except Exception as e:
+                print(f"Errore scrittura log: {e}", file=sys.stderr)
+
+            # 3. Inviamo la notifica (operazione più rischiosa)
+            utils.invia_messaggio_sync(messaggio, config.chat_id)
+
+    except Exception as e:
+        print(f"Errore critico in notify_switch: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

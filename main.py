@@ -9,6 +9,8 @@ import config
 from config import cartella_log_base, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
+import socket
+from log.utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay
 import mysql.connector
 import ipaddress
 import paramiko
@@ -38,12 +40,12 @@ def start_health_server():
 # Funzione per determinare il nodo corrente
 def get_nodo_corrente():
     hostname = socket.gethostname()
-    if hostname == "firts_device":
+    if hostname == "firts_device" or hostname == "first_device":
         return "First Device"
     elif hostname == "second_device":
         return "Second Device"
     else:
-        return f"Host sconosciuto ({hostname})"
+        return f"{hostname}"
 
 # Avvia in un thread separato (all'inizio del programma, dopo gli import)
 threading.Thread(target=start_health_server, daemon=True).start()
@@ -151,17 +153,8 @@ def create_database_and_table():
 create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
-
-def get_current_log_path():
-    anno_corrente = datetime.now().strftime('%Y')
-    mese_corrente = datetime.now().strftime('%m')
-    data_corrente = datetime.now().strftime("%Y-%m-%d")
-
-    cartella_log = os.path.join(cartella_log_base, anno_corrente, mese_corrente)
-    if not os.path.exists(cartella_log):
-        os.makedirs(cartella_log)
-
-    return os.path.join(cartella_log, f"{data_corrente}.txt")
+# Variabile per tracciare l'ultimo cambio giorno (inizializzata alla data corrente all'avvio)
+ultimo_cambio_giorno = datetime.now(pytz.timezone('Europe/Rome')).date()
 
 def recupera_dispositivi_in_manutenzione():
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -188,46 +181,6 @@ def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
 
     cursor.close()
     cnx.close()
-
-# Funzione per inviare un messaggio
-async def invia_messaggio(messaggio, chat_id, reply_markup=None):
-    bot = Bot(token=config.bot_token)
-    try:
-        messaggio_inviato = await bot.send_message(chat_id=chat_id, text=messaggio, reply_markup=reply_markup)
-        message_id = messaggio_inviato.message_id
-        asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, message_id, 7 * 24 * 60 * 60))
-        return message_id
-    except Exception as e:
-        print(f"Errore durante l'invio del messaggio: {e}")
-
-# Funzione per inviare un messaggio suddividendolo in parti più piccole se necessario
-async def invia_messaggi_divisi(messaggio, chat_id):
-    bot = Bot(token=config.bot_token)
-    try:
-        righe = messaggio.split('\n')
-        for i in range(0, len(righe), 10):
-            parte = '\n'.join(righe[i:i+10])
-            messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte)
-            asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, 7 * 24 * 60 * 60))
-    except Exception as e:
-        print(f"Errore durante l'invio del messaggio: {e}")
-
-# Funzione per cancellare un messaggio dopo un certo delay
-async def cancella_messaggio_dopo_delay(chat_id, message_id, delay):
-    await asyncio.sleep(delay)
-    bot = Bot(token=config.bot_token)
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        print(f"Errore durante la cancellazione del messaggio: {e}")
-
-# Funzione per modificare un messaggio esistente
-async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
-    bot = Bot(token=config.bot_token)
-    try:
-        await bot.edit_message_text(chat_id=chat_id, message_id=messaggio_id, text=nuovo_testo)
-    except Exception as e:
-        print(f"Errore durante la modifica del messaggio: {e}")
 
 # Funzione sincrona per eseguire il ping (bloccante)
 def _esegui_ping_sync(indirizzo):
@@ -271,28 +224,19 @@ async def controlla_connessione(indirizzo):
 
     # Effettua il controllo di connessione in un thread separato
     return await loop.run_in_executor(executor, _esegui_ping_sync, indirizzo)
-    
-# Funzione per scrivere l'orario e il tipo di evento in un file di log
-def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
-    ora_evento = datetime.now().strftime('%H:%M:%S')
-    
-    nome_file = get_current_log_path()
-    
-    if nome_dispositivo and indirizzo_ip:
-        evento = f"{ora_evento} - {tipo_evento} - {nome_dispositivo} ({indirizzo_ip})"
-    else:
-        evento = f"{ora_evento} - {tipo_evento}"
-
-    with open(nome_file, 'a') as file:
-        file.write(evento + '\n')
 
 # Funzione per inviare il contenuto del file testuale del giorno precedente a mezzanotte
 async def invia_file_testuale():
+    global ultimo_cambio_giorno
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+    data_corrente = ora_corrente.date()
+
+    # Se la data corrente è diversa dall'ultima registrata, è iniziato un nuovo giorno
+    if data_corrente > ultimo_cambio_giorno:
         scrivi_log("Inizio Giornata")
         print("Invio del contenuto del file testuale del giorno precedente.")
         await invia_contenuto_file()
+        ultimo_cambio_giorno = data_corrente
 
 async def invia_contenuto_file():
     print("Invio del contenuto del file testuale del giorno precedente.")

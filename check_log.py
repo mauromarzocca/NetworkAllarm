@@ -1,7 +1,7 @@
 import os
 import asyncio
 from datetime import datetime
-from main import invia_messaggio  # Importa la funzione dal main.py
+from log.utils import invia_messaggio  # Importa la funzione da log/utils.py
 from config import chat_id  # Importa chat_id dalla configurazione
 
 # Ottieni la directory in cui si trova il file attuale
