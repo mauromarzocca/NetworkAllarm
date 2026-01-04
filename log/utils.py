@@ -7,6 +7,7 @@ try:
 except ImportError:
     Bot = None
 import requests
+import pytz
 
 # Cartella log/ = dove si trova questo file
 LOG_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,9 +21,10 @@ if APP_ROOT not in sys.path:
 import config
 
 def get_current_log_path():
-    anno_corrente = datetime.now().strftime('%Y')
-    mese_corrente = datetime.now().strftime('%m')
-    data_corrente = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now(pytz.timezone('Europe/Rome'))
+    anno_corrente = now.strftime('%Y')
+    mese_corrente = now.strftime('%m')
+    data_corrente = now.strftime("%Y-%m-%d")
 
     cartella_log = os.path.join(LOG_DIR, anno_corrente, mese_corrente)
     os.makedirs(cartella_log, exist_ok=True)
@@ -30,7 +32,8 @@ def get_current_log_path():
     return os.path.join(cartella_log, f"{data_corrente}.txt")
 
 def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
-    ora_evento = datetime.now().strftime('%H:%M:%S')
+    now = datetime.now(pytz.timezone('Europe/Rome'))
+    ora_evento = now.strftime('%H:%M:%S')
 
     nome_file = get_current_log_path()
 
