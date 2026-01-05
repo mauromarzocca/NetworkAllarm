@@ -42,8 +42,56 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
     else:
         evento = f"{ora_evento} - {tipo_evento}"
 
-    with open(nome_file, 'a') as file:
-        file.write(evento + '\n')
+    buffer_file = os.path.join(APP_ROOT, "offline_log_buffer.txt")
+
+    try:
+        # Tenta di svuotare il buffer se esiste
+        if os.path.exists(buffer_file):
+            temp_buffer_processing = buffer_file + ".processing"
+            try:
+                # Rinomina per evitare race conditions (semplice)
+                os.rename(buffer_file, temp_buffer_processing)
+
+                with open(temp_buffer_processing, 'r') as bf:
+                    contenuto_buffer = bf.read()
+
+                # Scrivi il contenuto del buffer nel file di log principale
+                with open(nome_file, 'a') as file:
+                    file.write(contenuto_buffer)
+
+                # Se la scrittura ha successo, cancella il file buffer temporaneo
+                os.remove(temp_buffer_processing)
+                print("Buffer log locale svuotato con successo.")
+            except OSError as e:
+                # Se il file non esiste (già processato) o errore di rename/lettura
+                if os.path.exists(temp_buffer_processing):
+                     # Se abbiamo rinominato ma fallito la scrittura, proviamo a ripristinare (opzionale, o lasciamo .processing per debug o retry manuale)
+                     # Qui scegliamo di non perdere dati: se fallisce scrittura su nome_file, dobbiamo preservare i dati.
+                     # Poiché siamo nel blocco try esterno, se open(nome_file) fallisce, finiamo nell'except esterno.
+                     # MA temp_buffer_processing esiste. Dobbiamo gestirlo.
+                     # Rilanciamo l'eccezione per attivare la logica di fallback che scriverà l'evento corrente nel buffer.
+                     # Ma il buffer vecchio è in .processing.
+                     # Semplifichiamo: se fallisce scrittura su main, ripristiniamo il nome buffer originale.
+                     try:
+                        os.rename(temp_buffer_processing, buffer_file)
+                     except:
+                        pass # Best effort
+                     raise e
+                else:
+                    # Probabilmente race condition su os.rename, qualcun altro l'ha preso.
+                    pass
+
+        # Scrivi il nuovo evento
+        with open(nome_file, 'a') as file:
+            file.write(evento + '\n')
+
+    except Exception as e:
+        print(f"Errore scrittura log su {nome_file}: {e}. Scrittura su buffer locale.")
+        try:
+            with open(buffer_file, 'a') as bf:
+                bf.write(evento + '\n')
+        except Exception as e2:
+            print(f"Errore critico scrittura buffer locale: {e2}")
 
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
     if Bot is None:
