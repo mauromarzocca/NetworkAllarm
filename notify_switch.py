@@ -62,8 +62,9 @@ def main():
 
         if azione == "START":
             nodo_attivo = nodo_corrente
-            messaggio = f"Switch su Nodo {nodo_attivo}"
-            salva_ultimo_nodo(nodo_attivo)
+            if nodo_attivo != ultimo_nodo:
+                messaggio = f"Switch su Nodo {nodo_attivo}"
+                salva_ultimo_nodo(nodo_attivo)
         elif azione == "STOP":
             if nodo_corrente == "Second Device":
                 nodo_attivo = "First Device"
@@ -74,8 +75,9 @@ def main():
                 # Se stoppiamo su un nodo non identificato (es. backup), assumiamo che si torni al First Device
                 nodo_attivo = "First Device"
 
-            messaggio = f"Switch su Nodo {nodo_attivo}"
-            salva_ultimo_nodo(nodo_attivo)
+            if nodo_attivo != ultimo_nodo:
+                messaggio = f"Switch su Nodo {nodo_attivo}"
+                salva_ultimo_nodo(nodo_attivo)
         else:
             # Comportamento legacy basato sul cambio di nodo
             if nodo_corrente != ultimo_nodo:
