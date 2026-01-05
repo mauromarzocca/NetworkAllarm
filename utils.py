@@ -9,10 +9,13 @@ except ImportError:
 import requests
 import pytz
 
-# Cartella log/ = dove si trova questo file
-LOG_DIR = os.path.dirname(os.path.abspath(__file__))
-# Cartella principale del progetto (genitore di log/)
-APP_ROOT = os.path.dirname(LOG_DIR)
+import queue
+import threading
+
+# Cartella principale del progetto = dove si trova questo file (ora utils.py è in root)
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+# Cartella log (dove montare il disco condiviso)
+LOG_DIR = os.path.join(APP_ROOT, "log")
 
 # Assicurati che config.py sia trovabile
 if APP_ROOT not in sys.path:
@@ -20,31 +23,78 @@ if APP_ROOT not in sys.path:
 
 import config
 
+# Coda per il logging asincrono
+log_queue = queue.Queue()
+
+def log_worker():
+    """
+    Worker thread che legge dalla coda e scrive su file.
+    Questo evita che un blocco I/O (es. NFS down) blocchi il thread principale.
+    """
+    while True:
+        item = log_queue.get()
+        if item is None:
+            break
+
+        try:
+            _scrivi_log_fisico(item)
+        except Exception as e:
+            print(f"Errore worker logging: {e}")
+        finally:
+            log_queue.task_done()
+
+# Avvio del worker thread (daemon in modo che non blocchi l'uscita, ma attenzione ai log persi allo shutdown)
+threading.Thread(target=log_worker, daemon=True).start()
+
 def get_current_log_path():
     now = datetime.now(pytz.timezone('Europe/Rome'))
     anno_corrente = now.strftime('%Y')
     mese_corrente = now.strftime('%m')
     data_corrente = now.strftime("%Y-%m-%d")
 
+    # Usiamo LOG_DIR (che punta a root/log)
     cartella_log = os.path.join(LOG_DIR, anno_corrente, mese_corrente)
+
+    # Tentativo di creare la directory. Se il mount è read-only o down, potrebbe fallire/bloccare.
+    # Ma siamo nel worker thread, quindi ok.
     os.makedirs(cartella_log, exist_ok=True)
 
     return os.path.join(cartella_log, f"{data_corrente}.txt")
 
 def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
+    """
+    Mette in coda il log. Non bloccante.
+    """
     now = datetime.now(pytz.timezone('Europe/Rome'))
     ora_evento = now.strftime('%H:%M:%S')
-
-    nome_file = get_current_log_path()
 
     if nome_dispositivo and indirizzo_ip:
         evento = f"{ora_evento} - {tipo_evento} - {nome_dispositivo} ({indirizzo_ip})"
     else:
         evento = f"{ora_evento} - {tipo_evento}"
 
+    log_queue.put(evento)
+
+def _scrivi_log_fisico(evento):
+    """
+    Effettua la scrittura fisica su disco (eseguito dal worker thread).
+    Include la logica di buffer offline.
+    """
+    nome_file = None
+    try:
+        nome_file = get_current_log_path()
+    except Exception as e:
+        # Se fallisce get_current_log_path (es. makedirs fallisce), trattalo come errore di scrittura
+        print(f"Errore calcolo percorso log: {e}. Uso buffer.")
+        # nome_file resta None o invalido, il blocco try successivo fallirà su open(nome_file) e andrà nel buffer
+
     buffer_file = os.path.join(APP_ROOT, "offline_log_buffer.txt")
 
     try:
+        # Se nome_file è None (es. errore makedirs), saltiamo direttamente al buffer
+        if not nome_file:
+            raise IOError("Percorso log non valido")
+
         # Tenta di svuotare il buffer se esiste
         if os.path.exists(buffer_file):
             temp_buffer_processing = buffer_file + ".processing"
@@ -65,20 +115,13 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
             except OSError as e:
                 # Se il file non esiste (già processato) o errore di rename/lettura
                 if os.path.exists(temp_buffer_processing):
-                     # Se abbiamo rinominato ma fallito la scrittura, proviamo a ripristinare (opzionale, o lasciamo .processing per debug o retry manuale)
-                     # Qui scegliamo di non perdere dati: se fallisce scrittura su nome_file, dobbiamo preservare i dati.
-                     # Poiché siamo nel blocco try esterno, se open(nome_file) fallisce, finiamo nell'except esterno.
-                     # MA temp_buffer_processing esiste. Dobbiamo gestirlo.
-                     # Rilanciamo l'eccezione per attivare la logica di fallback che scriverà l'evento corrente nel buffer.
-                     # Ma il buffer vecchio è in .processing.
-                     # Semplifichiamo: se fallisce scrittura su main, ripristiniamo il nome buffer originale.
+                     # Ripristino
                      try:
                         os.rename(temp_buffer_processing, buffer_file)
                      except:
-                        pass # Best effort
+                        pass
                      raise e
                 else:
-                    # Probabilmente race condition su os.rename, qualcun altro l'ha preso.
                     pass
 
         # Scrivi il nuovo evento

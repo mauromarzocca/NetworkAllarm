@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-# log/notify_switch.py
+# notify_switch.py
 import os
 import sys
 import socket
 
+# Siamo nella root, aggiungiamo la current dir al path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
-sys.path.insert(0, APP_DIR)
 
 import utils
 import config
 
 # Percorso del file di stato
-STATO_DIR = os.path.join(APP_DIR, "stato")
+STATO_DIR = os.path.join(SCRIPT_DIR, "stato")
 STATO_FILE = os.path.join(STATO_DIR, ".ultimo_nodo")
 
 def get_nodo():

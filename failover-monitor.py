@@ -49,13 +49,13 @@ def manage_service():
         if local_active:
             subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME], check=False)
             log("Container attivo → servizio 'Second Device' arrestato")
-            subprocess.run(["python3", "log/notify_switch.py", "STOP"], check=False)
+            subprocess.run(["python3", "notify_switch.py", "STOP"], check=False)
         # else: già fermo, niente da fare
     else:
         if not local_active:
             subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME], check=False)
             log("'First Device' down → servizio 'Second Device' avviato")
-            subprocess.run(["python3", "log/notify_switch.py", "START"], check=False)
+            subprocess.run(["python3", "notify_switch.py", "START"], check=False)
         # else: già attivo, niente da fare
 
 if __name__ == "__main__":

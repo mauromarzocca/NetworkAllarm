@@ -10,7 +10,7 @@ from config import cartella_log_base, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import socket
-from log.utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay
+from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay
 import mysql.connector
 import ipaddress
 import paramiko
