@@ -40,7 +40,7 @@ def start_health_server():
 # Funzione per determinare il nodo corrente
 def get_nodo_corrente():
     hostname = socket.gethostname()
-    if hostname == "firts_device" or hostname == "first_device":
+    if hostname == "firts_device":
         return "First Device"
     elif hostname == "second_device":
         return "Second Device"
@@ -229,9 +229,38 @@ async def controlla_connessione(indirizzo):
     # Effettua il controllo di connessione in un thread separato
     return await loop.run_in_executor(executor, _esegui_ping_sync, indirizzo)
 
+# Variabile globale per tracciare il report in sospeso
+report_pending_date = None
+PENDING_REPORT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "report_pending.txt")
+
+def save_pending_report(date_str):
+    try:
+        os.makedirs(os.path.dirname(PENDING_REPORT_FILE), exist_ok=True)
+        # Sovrascrive il file: con la data se presente, o con stringa vuota se None
+        with open(PENDING_REPORT_FILE, "w") as f:
+            f.write(date_str if date_str else "")
+    except Exception as e:
+        print(f"Errore salvataggio pending report: {e}")
+
+def load_pending_report():
+    try:
+        os.makedirs(os.path.dirname(PENDING_REPORT_FILE), exist_ok=True)
+        if not os.path.exists(PENDING_REPORT_FILE):
+            # Crea il file vuoto se non esiste
+            with open(PENDING_REPORT_FILE, "w") as f:
+                f.write("")
+            return None
+
+        with open(PENDING_REPORT_FILE, "r") as f:
+            content = f.read().strip()
+            return content if content else None
+    except Exception as e:
+        print(f"Errore caricamento pending report: {e}")
+    return None
+
 # Funzione per inviare il contenuto del file testuale del giorno precedente a mezzanotte
 async def invia_file_testuale():
-    global ultimo_cambio_giorno
+    global ultimo_cambio_giorno, report_pending_date
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
     data_corrente = ora_corrente.date()
 
@@ -239,21 +268,48 @@ async def invia_file_testuale():
     if data_corrente > ultimo_cambio_giorno:
         scrivi_log("Inizio Giornata")
         print("Invio del contenuto del file testuale del giorno precedente.")
-        await invia_contenuto_file()
+
+        # Calcola la data del giorno precedente
+        data_precedente = (ora_corrente - timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # Tenta di inviare il report
+        inviato = await invia_contenuto_file(data_precedente)
+
+        if not inviato:
+            # Se fallisce, memorizza la data per riprovare
+            report_pending_date = data_precedente
+            save_pending_report(report_pending_date)
+            print(f"Report per {data_precedente} messo in sospeso.")
+        else:
+            report_pending_date = None
+            save_pending_report(None)
+
         ultimo_cambio_giorno = data_corrente
 
-async def invia_contenuto_file():
-    print("Invio del contenuto del file testuale del giorno precedente.")
+async def invia_contenuto_file(data_target=None, silent=False):
+    """
+    Invia il contenuto del file di log per una data specifica.
+    Restituisce True se inviato con successo, False altrimenti.
     
-    data_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y-%m-%d')
+    Args:
+        data_target (str): Data in formato 'YYYY-MM-DD'. Se None, usa ieri.
+        silent (bool): Se True, non invia messaggi di errore su Telegram.
+    """
+    if data_target:
+        data_log = data_target
+        # Parsing della data per ottenere anno e mese
+        dt_target = datetime.strptime(data_target, '%Y-%m-%d')
+        anno_log = dt_target.strftime('%Y')
+        mese_log = dt_target.strftime('%m')
+    else:
+        print("Invio del contenuto del file testuale del giorno precedente.")
+        dt_precedente = datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)
+        data_log = dt_precedente.strftime('%Y-%m-%d')
+        anno_log = dt_precedente.strftime('%Y')
+        mese_log = dt_precedente.strftime('%m')
     
-    # Suddivisione in cartelle per anno e mese
-    anno_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y')
-    mese_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%m')
-    
-    cartella_log = os.path.join(cartella_log_base, anno_precedente, mese_precedente)
-    
-    nome_file = f"{cartella_log}/{data_precedente}.txt"
+    cartella_log = os.path.join(cartella_log_base, anno_log, mese_log)
+    nome_file = f"{cartella_log}/{data_log}.txt"
 
     try:
         loop = asyncio.get_running_loop()
@@ -271,9 +327,11 @@ async def invia_contenuto_file():
         contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
             excl in line.lower() for excl in ["inizio giornata", "avvio dello script", "servizio avviato", "generazione esterna"])]
 
+        intestazione = f"📄 Report del {data_log}"
+
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
-            await invia_messaggio("✅ Nessun evento da segnalare.", config.chat_id)
+            await invia_messaggio(f"{intestazione}\n✅ Nessun evento da segnalare.", config.chat_id)
             # Conta il numero di occorrenze di "Avvio dello script"
             numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
             if numero_avvii > 1:
@@ -289,14 +347,18 @@ async def invia_contenuto_file():
                 messaggio_serivio = f"Avvio dello script : {numero_servizi}"
                 contenuto_da_inviare.insert(0, messaggio_serivio)
 
-            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
-            print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
-            await invia_messaggi_divisi(contenuto_da_inviare, config.chat_id)
+            contenuto_da_inviare.insert(0, intestazione)
+            contenuto_da_inviare_str = '\n'.join(contenuto_da_inviare)
+            print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare_str)
+            await invia_messaggi_divisi(contenuto_da_inviare_str, config.chat_id)
+
+        return True
     
     except Exception as e:
-        print("Errore durante la lettura del file di log:", str(e))
-        await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", config.chat_id)
-        return
+        print(f"Errore durante la lettura del file di log {data_log}: {str(e)}")
+        if not silent:
+            await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", config.chat_id)
+        return False
 
 async def invia_log_corrente(chat_id):
     data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
@@ -1329,6 +1391,12 @@ def main():
     global modalita_manutenzione
     modalita_manutenzione = all(result[0] for result in results)
 
+    # Carica report in sospeso all'avvio
+    global report_pending_date
+    report_pending_date = load_pending_report()
+    if report_pending_date:
+        print(f"Trovato report in sospeso per la data: {report_pending_date}")
+
     # Aggiungi un dizionario globale per tenere traccia delle notifiche inviate
 
     async def monitoraggio():
@@ -1429,11 +1497,27 @@ def main():
                         await invia_messaggio("✅ Allarme Rientrato: Rilevata connessione attiva.", config.chat_id)
 
                     await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+
+                    # Gestione cambio giorno e invio report
                     await invia_file_testuale()
+
+                    # Gestione retry report in sospeso
+                    if report_pending_date:
+                        print(f"Tentativo invio report in sospeso per {report_pending_date}...")
+                        if await invia_contenuto_file(report_pending_date, silent=True):
+                            print(f"Report in sospeso per {report_pending_date} inviato con successo.")
+                            report_pending_date = None
+                            save_pending_report(None)
 
                 else:
                     await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
                     await invia_file_testuale()
+
+                    # Gestione retry report in sospeso anche in modalità manutenzione
+                    if report_pending_date:
+                        if await invia_contenuto_file(report_pending_date, silent=True):
+                            report_pending_date = None
+                            save_pending_report(None)
             except Exception as e:
                 print(f"Errore nel loop di monitoraggio: {e}")
                 await asyncio.sleep(60)
