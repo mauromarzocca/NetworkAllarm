@@ -196,6 +196,10 @@ def _esegui_ping_sync(indirizzo):
         print(f"Errore durante il ping per {indirizzo}: {e}")
         return False
 
+def _read_file_sync(filepath):
+    with open(filepath, 'r') as file:
+        return file.readlines()
+
 # Funzione asincrona che wrappa il ping sincrono
 async def controlla_connessione(indirizzo):
     # Verifica se il dispositivo è in stato di manutenzione
@@ -252,8 +256,12 @@ async def invia_contenuto_file():
     nome_file = f"{cartella_log}/{data_precedente}.txt"
 
     try:
-        with open(nome_file, 'r') as file:
-            contenuto_file = file.readlines()
+        loop = asyncio.get_running_loop()
+        # Use wait_for to prevent infinite hang if disk is in D-state
+        contenuto_file = await asyncio.wait_for(
+            loop.run_in_executor(executor, _read_file_sync, nome_file),
+            timeout=10.0
+        )
 
         # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
@@ -287,7 +295,8 @@ async def invia_contenuto_file():
     
     except Exception as e:
         print("Errore durante la lettura del file di log:", str(e))
-        await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_precedente}: {str(e)}", config.chat_id)
+        await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", config.chat_id)
+        return
 
 async def invia_log_corrente(chat_id):
     data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
@@ -299,8 +308,12 @@ async def invia_log_corrente(chat_id):
     nome_file = f"{cartella_log}/{data_corrente}.txt"
     
     try:
-        with open(nome_file, 'r') as file:
-            contenuto_file = file.readlines()
+        loop = asyncio.get_running_loop()
+        # Use wait_for to prevent infinite hang if disk is in D-state
+        contenuto_file = await asyncio.wait_for(
+            loop.run_in_executor(executor, _read_file_sync, nome_file),
+            timeout=10.0
+        )
         
         # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
@@ -335,7 +348,8 @@ async def invia_log_corrente(chat_id):
     
     except Exception as e:
         print("Errore durante la lettura del file di log:", str(e))
-        await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_corrente}: {str(e)}", chat_id)
+        await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", chat_id)
+        return
 
 cnx = None
 
