@@ -8,7 +8,7 @@ import pytz
 import config
 from config import cartella_log_base, credenziali
 import mysql.connector
-from config import DB_USER, DB_PASSWORD, DB_HOST
+from config import DB_USER, DB_PASSWORD
 import socket
 from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay
 import mysql.connector
@@ -34,18 +34,13 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def start_health_server():
     # Ascolta su TUTTE le interfacce di rete
-    server = HTTPServer(('0.0.0.0', 8081), HealthHandler)
+    server = HTTPServer(('0.0.0.0', config.HEALTH_SERVER_PORT), HealthHandler)
     server.serve_forever()
 
 # Funzione per determinare il nodo corrente
 def get_nodo_corrente():
     hostname = socket.gethostname()
-    if hostname == "firts_device":
-        return "First Device"
-    elif hostname == "second_device":
-        return "Second Device"
-    else:
-        return f"{hostname}"
+    return config.NODE_ALIASES.get(hostname, hostname)
 
 # Avvia in un thread separato (all'inizio del programma, dopo gli import)
 threading.Thread(target=start_health_server, daemon=True).start()
@@ -56,7 +51,7 @@ DB_USER = config.DB_USER
 DB_PASSWORD = config.DB_PASSWORD
 
 # Executor per task bloccanti
-executor = ThreadPoolExecutor(max_workers=10)
+executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS)
 
 def create_database_if_not_exists():
     #Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
