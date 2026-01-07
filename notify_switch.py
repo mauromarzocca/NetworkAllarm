@@ -63,8 +63,8 @@ def main():
         elif azione == "STOP":
             # Recuperiamo i nomi visualizzati dalla configurazione
             # Nota: le chiavi 'first_device' e 'second_device' devono corrispondere ai hostname reali o definiti in config
-            first_device_name = config.NODE_ALIASES.get("first_device", "First Device")
-            second_device_name = config.NODE_ALIASES.get("second_device", "Second Device")
+            first_device_name = config.NODE_ALIASES.get(config.PRIMARY_HOSTNAME, "First Device")
+            second_device_name = config.NODE_ALIASES.get(config.SECONDARY_HOSTNAME, "Second Device")
 
             if nodo_corrente == second_device_name:
                 nodo_attivo = first_device_name
