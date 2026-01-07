@@ -8,7 +8,7 @@ import pytz
 import config
 from config import cartella_log_base, credenziali
 import mysql.connector
-from config import DB_USER, DB_PASSWORD
+from config import DB_USER, DB_PASSWORD, DB_HOST
 import socket
 from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay
 import mysql.connector
@@ -50,7 +50,7 @@ def get_nodo_corrente():
 # Avvia in un thread separato (all'inizio del programma, dopo gli import)
 threading.Thread(target=start_health_server, daemon=True).start()
 
-DB_HOST = 'localhost'
+DB_HOST = config.DB_HOST
 DB_NAME = config.DB_NAME
 DB_USER = config.DB_USER
 DB_PASSWORD = config.DB_PASSWORD

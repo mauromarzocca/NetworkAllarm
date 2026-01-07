@@ -17,12 +17,7 @@ STATO_FILE = os.path.join(STATO_DIR, ".ultimo_nodo")
 
 def get_nodo():
     hostname = socket.gethostname()
-    if hostname == "first_device":
-        return "First Device"
-    elif hostname == "second_device":
-        return "Second Device"
-    else:
-        return f"HOST_SCONOSCIUTO({hostname})"
+    return config.NODE_ALIASES.get(hostname, f"HOST_SCONOSCIUTO({hostname})")
 
 def leggi_ultimo_nodo():
     # Crea la cartella se non esiste (utile al primo avvio)
@@ -66,14 +61,19 @@ def main():
                 messaggio = f"Switch su Nodo {nodo_attivo}"
                 salva_ultimo_nodo(nodo_attivo)
         elif azione == "STOP":
-            if nodo_corrente == "Second Device":
-                nodo_attivo = "First Device"
-            elif nodo_corrente == "First Device":
-                nodo_attivo = "Second Device"
+            # Recuperiamo i nomi visualizzati dalla configurazione
+            # Nota: le chiavi 'first_device' e 'second_device' devono corrispondere ai hostname reali o definiti in config
+            first_device_name = config.NODE_ALIASES.get("first_device", "First Device")
+            second_device_name = config.NODE_ALIASES.get("second_device", "Second Device")
+
+            if nodo_corrente == second_device_name:
+                nodo_attivo = first_device_name
+            elif nodo_corrente == first_device_name:
+                nodo_attivo = second_device_name
             else:
                 # Fallback per nodi sconosciuti o configurazioni diverse:
                 # Se stoppiamo su un nodo non identificato (es. backup), assumiamo che si torni al First Device
-                nodo_attivo = "First Device"
+                nodo_attivo = first_device_name
 
             if nodo_attivo != ultimo_nodo:
                 messaggio = f"Switch su Nodo {nodo_attivo}"

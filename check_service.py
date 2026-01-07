@@ -2,7 +2,7 @@ import subprocess
 import config
 import asyncio
 import os
-from main import invia_messaggio, scrivi_log
+from utils import invia_messaggio, scrivi_log
 
 def is_service_running(service_name):
     """Controlla se un servizio è in esecuzione."""

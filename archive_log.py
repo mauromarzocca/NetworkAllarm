@@ -4,7 +4,7 @@ from datetime import datetime
 import asyncio
 from telegram import Bot
 import config  # Importa il file di configurazione
-from main import scrivi_log, invia_messaggio  # Importa le funzioni dal file main.py
+from utils import scrivi_log, invia_messaggio  # Importa le funzioni dal file main.py
 
 def archivia_directory(mese, anno):
     # Costruisci il percorso della directory da archiviare

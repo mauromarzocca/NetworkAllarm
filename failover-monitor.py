@@ -3,36 +3,37 @@ import os
 import time
 import subprocess
 import requests
+import config
 from datetime import datetime
-PRIMARY_URL = "http://IP:8081/health"  
-SERVICE_NAME = "networkallarm"
-CHECK_INTERVAL = 30
-LOG_FILE = "/path/log/failover-monitor.log"
 
 def log(msg):
     line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {msg}"
     print(line)
     try:
-        if "/path/log/" not in LOG_FILE:
-             os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-             with open(LOG_FILE, "a") as f:
-                f.write(line + "\n")
+        # Use absolute path for log file relative to script directory if not absolute
+        log_path = config.FAILOVER_LOG_FILE
+        if not os.path.isabs(log_path):
+            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), log_path)
+
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a") as f:
+            f.write(line + "\n")
     except Exception as e:
         print(f"Errore scrittura log: {e}")
 
 def is_primary_healthy():
     try:
-        resp = requests.get(PRIMARY_URL, timeout=5)
+        resp = requests.get(config.FAILOVER_PRIMARY_URL, timeout=5)
         return resp.status_code == 200
     except Exception as e:
-        log(f"'First Device' down: {e}")
+        log(f"Primary node check failed: {e}")
         return False
 
 def is_local_service_active():
     """Controlla se il servizio locale è attivo"""
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", SERVICE_NAME],
+            ["systemctl", "is-active", config.FAILOVER_SERVICE_NAME],
             capture_output=True,
             text=True
         )
@@ -47,14 +48,14 @@ def manage_service():
 
     if primary_ok:
         if local_active:
-            subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME], check=False)
-            log("Container attivo → servizio 'Second Device' arrestato")
+            subprocess.run(["sudo", "systemctl", "stop", config.FAILOVER_SERVICE_NAME], check=False)
+            log("Primary OK -> Stopping local failover service")
             subprocess.run(["python3", "notify_switch.py", "STOP"], check=False)
         # else: già fermo, niente da fare
     else:
         if not local_active:
-            subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME], check=False)
-            log("'First Device' down → servizio 'Second Device' avviato")
+            subprocess.run(["sudo", "systemctl", "start", config.FAILOVER_SERVICE_NAME], check=False)
+            log("Primary DOWN -> Starting local failover service")
             subprocess.run(["python3", "notify_switch.py", "START"], check=False)
         # else: già attivo, niente da fare
 
@@ -65,4 +66,4 @@ if __name__ == "__main__":
             manage_service()
         except Exception as e:
             log(f"Errore nel loop principale: {e}")
-        time.sleep(CHECK_INTERVAL)
+        time.sleep(config.FAILOVER_CHECK_INTERVAL)
