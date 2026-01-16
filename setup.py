@@ -50,20 +50,28 @@ def check_system_deps():
     else:
         print("Tutte le dipendenze di sistema sono presenti.")
 
-def get_input(prompt, default=None, is_password=False):
-    if default:
-        p = f"{prompt} [{default}]: "
-    else:
-        p = f"{prompt}: "
+def get_input(prompt, default=None, is_password=False, mandatory=False):
+    while True:
+        if default:
+            p = f"{prompt} [{default}]: "
+        else:
+            p = f"{prompt}: "
 
-    if is_password:
-        val = getpass.getpass(p)
-    else:
-        val = input(p)
+        if is_password:
+            val = getpass.getpass(p)
+        else:
+            val = input(p)
 
-    if not val and default:
-        return default
-    return val
+        val = val.strip()
+
+        if not val and default:
+            return default
+
+        if mandatory and not val:
+            print(f"Campo obbligatorio.")
+            continue
+
+        return val
 
 def setup_config():
     print("\n--- Configurazione ---")
@@ -84,25 +92,19 @@ def setup_config():
         secondary_hostname = get_input("Inserisci Hostname del nodo Secondario", "second_device")
 
     # 2. Bot Token
-    bot_token = get_input("Inserisci Bot Token Telegram")
-    while not bot_token:
-        print("Il Bot Token è obbligatorio.")
-        bot_token = get_input("Inserisci Bot Token Telegram")
+    bot_token = get_input("Inserisci Bot Token Telegram", mandatory=True)
 
     # 3. Chat ID
-    chat_id = get_input("Inserisci Chat ID")
-    while not chat_id:
-        print("Il Chat ID è obbligatorio.")
-        chat_id = get_input("Inserisci Chat ID")
+    chat_id = get_input("Inserisci Chat ID", mandatory=True)
 
     # 4. Authorized Users
-    auth_users_str = get_input("Inserisci ID account autorizzati (separati da virgola)")
+    auth_users_str = get_input("Inserisci ID account autorizzati (separati da virgola)", mandatory=True)
     auth_users = [x.strip() for x in auth_users_str.split(',') if x.strip()]
 
     # 5. DB Config
     db_host = get_input("DB Host", "localhost")
-    db_user = get_input("DB User")
-    db_pass = get_input("DB Password", is_password=True)
+    db_user = get_input("DB User", mandatory=True)
+    db_pass = get_input("DB Password", is_password=True, mandatory=True)
     db_name = "NetworkAllarm"
 
     # 6. Backup Config
@@ -113,13 +115,13 @@ def setup_config():
     if want_backup:
         backup_type = get_input("Backup locale o remoto? (l/r)", "l").lower()
         if backup_type == 'r':
-            backup_remote_host = get_input("Inserisci BACKUP_REMOTE_HOST (es. user@IP)")
-            backup_remote_path = get_input("Inserisci BACKUP_REMOTE_PATH")
+            backup_remote_host = get_input("Inserisci BACKUP_REMOTE_HOST (es. user@IP)", mandatory=True)
+            backup_remote_path = get_input("Inserisci BACKUP_REMOTE_PATH", mandatory=True)
 
     # 7. Device to monitor
     print("\n--- Dispositivo da Monitorare ---")
-    dev_name = get_input("Nome Dispositivo")
-    dev_ip = get_input("IP Dispositivo")
+    dev_name = get_input("Nome Dispositivo", mandatory=True)
+    dev_ip = get_input("IP Dispositivo", mandatory=True)
 
     # Generate config.py content
     config_content = f"""import os
