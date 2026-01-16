@@ -5,6 +5,7 @@ import shutil
 import getpass
 import socket
 import importlib.util
+import ipaddress
 
 # Helper function to install Python dependencies
 def install_python_deps():
@@ -50,7 +51,14 @@ def check_system_deps():
     else:
         print("Tutte le dipendenze di sistema sono presenti.")
 
-def get_input(prompt, default=None, is_password=False, mandatory=False):
+def validate_ip(ip_str):
+    try:
+        ipaddress.ip_address(ip_str)
+        return True
+    except ValueError:
+        return False
+
+def get_input(prompt, default=None, is_password=False, mandatory=False, is_ip=False):
     while True:
         if default:
             p = f"{prompt} [{default}]: "
@@ -65,11 +73,16 @@ def get_input(prompt, default=None, is_password=False, mandatory=False):
         val = val.strip()
 
         if not val and default:
-            return default
+            val = default
 
         if mandatory and not val:
             print(f"Campo obbligatorio.")
             continue
+
+        if is_ip and val:
+            if not validate_ip(val):
+                print("Indirizzo IP non valido. Riprova.")
+                continue
 
         return val
 
@@ -98,8 +111,12 @@ def setup_config():
     chat_id = get_input("Inserisci Chat ID", mandatory=True)
 
     # 4. Authorized Users
-    auth_users_str = get_input("Inserisci ID account autorizzati (separati da virgola)", mandatory=True)
-    auth_users = [x.strip() for x in auth_users_str.split(',') if x.strip()]
+    while True:
+        auth_users_str = get_input("Inserisci ID account autorizzati (separati da virgola)", mandatory=True)
+        auth_users = [x.strip() for x in auth_users_str.split(',') if x.strip()]
+        if auth_users:
+            break
+        print("Devi inserire almeno un ID autorizzato.")
 
     # 5. DB Config
     db_host = get_input("DB Host", "localhost")
@@ -121,7 +138,7 @@ def setup_config():
     # 7. Device to monitor
     print("\n--- Dispositivo da Monitorare ---")
     dev_name = get_input("Nome Dispositivo", mandatory=True)
-    dev_ip = get_input("IP Dispositivo", mandatory=True)
+    dev_ip = get_input("IP Dispositivo", mandatory=True, is_ip=True)
 
     # Generate config.py content
     config_content = f"""import os
