@@ -150,6 +150,8 @@ create_database_and_table()
 allarme_attivo = False
 # Variabile per tracciare l'ultimo cambio giorno (inizializzata alla data corrente all'avvio)
 ultimo_cambio_giorno = datetime.now(pytz.timezone('Europe/Rome')).date()
+# Variabile per la manutenzione temporanea
+manutenzione_programmata_scadenza = None
 
 def recupera_dispositivi_in_manutenzione():
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -457,7 +459,7 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
             scrivi_log("Errore: connessione al database non disponibile")
             await invia_messaggio("Errore: connessione al database non disponibile", config.chat_id)
 
-async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def termina_manutenzione_logic():
     global modalita_manutenzione, dispositivi_in_manutenzione, allarme_attivo
     
     if modalita_manutenzione:
@@ -470,13 +472,19 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
         dispositivi_in_manutenzione.clear()
         
         # Aggiorna il valore di Maintenence nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("UPDATE monitor SET Maintenence = FALSE")
-        cursor.execute(query)
-        cnx.commit()
-        cursor.close()
-        cnx.close()
+        try:
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("UPDATE monitor SET Maintenence = FALSE")
+            cursor.execute(query)
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+        except Exception as e:
+            print(f"Errore durante aggiornamento DB in termina_manutenzione: {e}")
+
+async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await termina_manutenzione_logic()
 
 def utente_autorizzato(user_id):
     return user_id in config.autorizzati
@@ -523,28 +531,24 @@ def get_keyboard():
 
 def get_custom_keyboard():
     button_list = [
-        KeyboardButton("🔧 Inizio Manutenzione"),
-        KeyboardButton("✅ Fine Manutenzione"),
+        KeyboardButton("🔧 Manutenzione"),
         KeyboardButton("📈 Stato Connessioni"),
         KeyboardButton("📝 Log Giornaliero"),
-        KeyboardButton("🔧 Manutenzione"),
-        KeyboardButton("⚙️ Aggiungi Dispositivo"),
-        KeyboardButton("⚙️ Modifica Dispositivo"),
-        KeyboardButton("⚙️ Rimuovi Dispositivo"),
+        KeyboardButton("⏲️ Manutenzione Temporanea"),
         KeyboardButton("🖥️ System Advance"),
-        KeyboardButton("☑️ Start")  # Aggiungi questo pulsante
+        KeyboardButton("⚙️ Gestione Dispositivo"),
+        KeyboardButton("☑️ Start")
     ]
     
     return ReplyKeyboardMarkup([
-        button_list[:2], 
-        button_list[2:4], 
-        button_list[4:6], 
-        button_list[6:8],
-        button_list[8:10]  # System Advance e Start
-        #[button_list[8]]  # Aggiungi il pulsante /start in una nuova riga
+        [button_list[0], button_list[1]],
+        [button_list[2], button_list[3]],
+        [button_list[4]],
+        [button_list[5], button_list[6]]
     ], resize_keyboard=True)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global manutenzione_programmata_scadenza
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -568,6 +572,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
+    elif query.data == 'manutenzione_on_global':
+        if not modalita_manutenzione:
+            await avvia_manutenzione(update, context)
+        else:
+            await invia_messaggio("La manutenzione è già attiva.", chat_id)
+    elif query.data == 'manutenzione_off_global':
+        if modalita_manutenzione:
+            manutenzione_programmata_scadenza = None # Resetta timer se presente
+            await termina_manutenzione(update, context)
+        else:
+            await invia_messaggio("La manutenzione non è attiva.", chat_id)
+    elif query.data.startswith('manutenzione_temp_'):
+        minuti = int(query.data.split('_')[2])
+        manutenzione_programmata_scadenza = datetime.now() + timedelta(minutes=minuti)
+        await invia_messaggio(f"Manutenzione temporanea attivata per {minuti} minuti.", chat_id)
+        if not modalita_manutenzione:
+            await avvia_manutenzione(update, context)
     elif query.data.startswith("system_advance_info_"):
         parts = query.data.split("_")
         nome_dispositivo = parts[3]
@@ -674,26 +695,43 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
-    if text == "🔧 Inizio Manutenzione":
-        await avvia_manutenzione(update, context)
-    elif text == "✅ Fine Manutenzione":
-        await termina_manutenzione(update, context)
+    if text == "🔧 Manutenzione":
+        await menu_manutenzione(update, context)
     elif text == "📈 Stato Connessioni":
         await verifica_stato_connessioni(update, context)
     elif text == "📝 Log Giornaliero":
         await invia_log_giornaliero(update, context)
-    elif text == "🔧 Manutenzione":
-        await gestisci_manutenzione(update, context)
-    elif text == "⚙️ Aggiungi Dispositivo":
-        await aggiungi_dispositivo_callback(update, context)
-    elif text == "⚙️ Modifica Dispositivo":
-        await modifica_dispositivo(update, context)
-    elif text == "⚙️ Rimuovi Dispositivo":
-        await rimuovi_dispositivo(update, context)
-    elif text == "☑️ Start":
-        await start(update, context)
+    elif text == "⏲️ Manutenzione Temporanea":
+        await menu_manutenzione_temporanea(update, context)
     elif text == "🖥️ System Advance":  
         await system_advance_menu(update, context)
+    elif text == "⚙️ Gestione Dispositivo":
+        await menu_gestione_dispositivo(update, context)
+    elif text == "☑️ Start":
+        await start(update, context)
+
+async def menu_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("✅ Attiva (ON)", callback_data='manutenzione_on_global'),
+         InlineKeyboardButton("❌ Disattiva (OFF)", callback_data='manutenzione_off_global')]
+    ]
+    await invia_messaggio("Gestione Manutenzione Globale:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def menu_manutenzione_temporanea(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("30 Minuti", callback_data='manutenzione_temp_30'),
+         InlineKeyboardButton("1 Ora", callback_data='manutenzione_temp_60'),
+         InlineKeyboardButton("2 Ore", callback_data='manutenzione_temp_120')]
+    ]
+    await invia_messaggio("Seleziona la durata della manutenzione:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Aggiungi", callback_data='aggiungi_dispositivo_callback'),
+         InlineKeyboardButton("Modifica", callback_data='modifica_dispositivo'),
+         InlineKeyboardButton("Cancella", callback_data='rimuovi_dispositivo')]
+    ]
+    await invia_messaggio("Gestione Dispositivo:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
@@ -1365,7 +1403,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo|⚙️ Rimuovi Dispositivo|⚙️ Modifica Dispositivo|🖥️ System Advance|☑️ Start)$"), button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|⏲️ Manutenzione Temporanea|🖥️ System Advance|⚙️ Gestione Dispositivo|☑️ Start)$"), button_handler))
     
     application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
@@ -1395,7 +1433,7 @@ def main():
     # Aggiungi un dizionario globale per tenere traccia delle notifiche inviate
 
     async def monitoraggio():
-        global allarme_attivo
+        global allarme_attivo, manutenzione_programmata_scadenza
         tutti_offline = False
         stato_precedente_connessioni = {}
         ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
@@ -1403,6 +1441,12 @@ def main():
 
         while True:
             try:
+                # Controllo scadenza manutenzione temporanea
+                if manutenzione_programmata_scadenza and datetime.now() > manutenzione_programmata_scadenza:
+                    print("Manutenzione temporanea scaduta. Disattivazione...")
+                    await termina_manutenzione_logic()
+                    manutenzione_programmata_scadenza = None
+
                 if not modalita_manutenzione:
                     tutti_offline = True
 
