@@ -26,7 +26,6 @@ TRACKED_FILES = [
     "backup.py",
     "backup_no_transfer.py",
     "restore.py",
-    "upgrade.py"
 ]
 
 def clear_screen():
