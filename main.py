@@ -534,11 +534,11 @@ def get_keyboard():
 def get_custom_keyboard():
     button_list = [
         KeyboardButton("🔧 Manutenzione"),
-        KeyboardButton("📈 Stato Connessioni"),
-        KeyboardButton("📝 Log Giornaliero"),
         KeyboardButton("⏲️ Manutenzione Temporanea"),
-        KeyboardButton("🖥️ System Advance"),
+        KeyboardButton("📝 Log Giornaliero"),
         KeyboardButton("⚙️ Gestione Dispositivo"),
+        KeyboardButton("📈 Stato Connessioni"),
+        KeyboardButton("🖥️ System Advance"),
         KeyboardButton("☑️ Start")
     ]
     
