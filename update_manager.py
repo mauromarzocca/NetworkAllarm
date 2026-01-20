@@ -25,9 +25,6 @@ TRACKED_FILES = [
     "archive_log.py",
     "backup.py",
     "backup_no_transfer.py",
-    "check_log.py",
-    "check_service.py",
-    "configure.py",
     "restore.py",
     "upgrade.py"
 ]
