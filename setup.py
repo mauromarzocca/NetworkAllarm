@@ -262,6 +262,10 @@ def create_services(conf):
     python_exec = sys.executable
 
     # NetworkAllarm Service
+    exec_start_pre = ""
+    if conf.get('multi_node'):
+        exec_start_pre = f"ExecStartPre={python_exec} {os.path.join(cwd, 'notify_switch.py')}\n"
+
     na_service = f"""[Unit]
 Description=NetworkAllarm Service
 After=network.target mysql.service
@@ -270,7 +274,7 @@ After=network.target mysql.service
 Type=simple
 User={user}
 WorkingDirectory={cwd}
-ExecStart={python_exec} {os.path.join(cwd, 'main.py')}
+{exec_start_pre}ExecStart={python_exec} {os.path.join(cwd, 'main.py')}
 Restart=always
 RestartSec=10
 
