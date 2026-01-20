@@ -22,6 +22,8 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+version = "10.0"
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/health':
@@ -493,7 +495,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if utente_autorizzato(user.id):
         nodo = get_nodo_corrente()
-        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
+        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\nVersione: <b>{version}</b>\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
         await update.message.reply_text(
             messaggio,
             reply_markup=get_custom_keyboard(),
