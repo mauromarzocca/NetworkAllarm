@@ -202,3 +202,44 @@ def invia_messaggio_sync(messaggio, chat_id=None):
         response.raise_for_status()
     except Exception as e:
         print(f"Errore invio messaggio sync: {e}")
+
+def check_new_release(local_version):
+    """
+    Checks for a new release on GitHub.
+    Returns a tuple (latest_version, is_new_available).
+    latest_version is a string (e.g. "10.1").
+    is_new_available is a boolean.
+    """
+    url = "https://api.github.com/repos/mauromarzocca/NetworkAllarm/releases/latest"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            latest_tag = data.get("tag_name", "").lstrip("v") # Remove 'v' prefix if present
+
+            def parse_version(v):
+                # Rimuove caratteri non numerici extra e splitta per punto
+                parts = []
+                for part in v.split('.'):
+                    if part.isdigit():
+                        parts.append(int(part))
+                return parts
+
+            try:
+                local_v = parse_version(local_version)
+                remote_v = parse_version(latest_tag)
+
+                if remote_v > local_v:
+                    return latest_tag, True
+                else:
+                    return latest_tag, False
+            except ValueError:
+                # Fallback to string comparison if version format is unexpected
+                if latest_tag != local_version:
+                     return latest_tag, True
+                return latest_tag, False
+
+        return None, False
+    except Exception as e:
+        print(f"Error checking for updates: {e}")
+        return None, False

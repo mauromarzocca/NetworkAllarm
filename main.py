@@ -10,7 +10,7 @@ from config import cartella_log_base, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import socket
-from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay
+from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release
 import ipaddress
 import paramiko
 import re
@@ -153,6 +153,10 @@ allarme_attivo = False
 ultimo_cambio_giorno = datetime.now(pytz.timezone('Europe/Rome')).date()
 # Variabile per la manutenzione temporanea
 manutenzione_programmata_scadenza = None
+
+# Variabili globali aggiunte
+dispositivi_in_manutenzione = set()
+modalita_manutenzione = False
 
 def recupera_dispositivi_in_manutenzione():
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -494,7 +498,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if utente_autorizzato(user.id):
         nodo = get_nodo_corrente()
-        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\nVersione: <b>{version}</b>\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
+
+        # Controllo aggiornamenti
+        try:
+            loop = asyncio.get_running_loop()
+            latest_version, is_new = await loop.run_in_executor(executor, check_new_release, version)
+        except Exception as e:
+            print(f"Errore controllo aggiornamenti: {e}")
+            latest_version, is_new = None, False
+
+        version_msg = f"Versione: <b>{version}</b>"
+        if latest_version:
+            if is_new:
+                version_msg += f"\n⚠️ <b>Nuova versione disponibile: {latest_version}</b>"
+            else:
+                version_msg += " (Aggiornato)"
+
+        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n{version_msg}\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
         await update.message.reply_text(
             messaggio,
             reply_markup=get_custom_keyboard(),
@@ -1345,6 +1365,7 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
     await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
 
 async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
+    global dispositivi_in_manutenzione
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
 
@@ -1356,7 +1377,6 @@ async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
     cnx.close()
 
     # Rimuovi il dispositivo dalla lista di quelli in manutenzione
-    global dispositivi_in_manutenzione
     dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))
 
     scrivi_log(f"Rimosso Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
@@ -1395,7 +1415,162 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     scrivi_log(f"Modificato Dispositivo : {nome_vecchio} - {indirizzo_ip} -> {nome_nuovo} - {indirizzo_ip}")
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
+async def monitoraggio():
+    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
+    tutti_offline = False
+    stato_precedente_connessioni = {}
+    ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
+    tempo_notifica_dispositivo = 1800  # 30 minuti
+
+    # Variabili per controllo aggiornamenti
+    next_update_check = datetime.now()
+    last_notified_remote_version = None
+
+    while True:
+        try:
+            # Controllo aggiornamenti periodico (ogni 4 ore o all'avvio)
+            if datetime.now() >= next_update_check:
+                try:
+                    latest_remote, is_new = await asyncio.get_running_loop().run_in_executor(
+                        executor, check_new_release, version
+                    )
+                    if is_new and latest_remote != last_notified_remote_version:
+                        await invia_messaggio(
+                            f"⚠️ <b>Nuova versione disponibile: {latest_remote}</b>\nVersione attuale: {version}",
+                            config.chat_id
+                        )
+                        last_notified_remote_version = latest_remote
+                except Exception as e:
+                    print(f"Errore controllo aggiornamenti in monitoraggio: {e}")
+
+                # Prossimo controllo tra 4 ore
+                next_update_check = datetime.now() + timedelta(hours=4)
+
+            # Controllo scadenza manutenzione temporanea
+            if manutenzione_programmata_scadenza and datetime.now() > manutenzione_programmata_scadenza:
+                print("Manutenzione temporanea scaduta. Disattivazione...")
+                await termina_manutenzione_logic()
+                manutenzione_programmata_scadenza = None
+
+            if not modalita_manutenzione:
+                tutti_offline = True
+
+                # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
+                # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
+                try:
+                    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+                    cursor = cnx.cursor()
+                    query = ("SELECT Nome, IP FROM monitor")
+                    cursor.execute(query)
+                    dispositivi = cursor.fetchall()
+                    cursor.close()
+                    cnx.close()
+                except mysql.connector.Error as err:
+                    print(f"Errore DB in monitoraggio: {err}")
+                    await asyncio.sleep(60)
+                    continue
+
+                for nome_dispositivo, indirizzo_ip in dispositivi:
+                    tentativi = 0
+
+                    while tentativi < 2:
+                        connessione_attuale = await controlla_connessione(indirizzo_ip)
+                        stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
+
+                        if connessione_attuale:
+                            if stato_precedente is False:  # Se prima era offline e ora è online
+                                if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
+                                    await invia_messaggio(
+                                        f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
+                                        config.chat_id
+                                    )
+                                    scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
+                                # Rimuovi la notifica di offline se era stata inviata
+                                ultima_notifica.pop(indirizzo_ip, None)
+                            stato_precedente_connessioni[indirizzo_ip] = True
+                            tutti_offline = False
+                            break
+                        else:
+                            tentativi += 1
+                            await asyncio.sleep(30)
+
+                    if not connessione_attuale:
+                        # Controlla se il dispositivo era online prima
+                        if stato_precedente is not None and stato_precedente:  # Solo se era online prima
+                            # Controlla se la notifica è già stata inviata
+                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
+                                print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                                await invia_messaggio(
+                                    f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
+                                    config.chat_id
+                                )
+                                # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
+                                ultima_notifica[indirizzo_ip] = datetime.now()
+                                # Scrivi il log solo se è la prima volta
+                                if stato_precedente_connessioni.get(indirizzo_ip, True):
+                                    scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                    stato_precedente_connessioni[indirizzo_ip] = False
+                            else:
+                                # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
+                                pass
+                        stato_precedente_connessioni[indirizzo_ip] = False
+
+                    # Questa logica era stata rimossa erroneamente. La ripristino ora.
+                    if not connessione_attuale and stato_precedente is False:
+                        # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
+                        if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
+                            print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                            await invia_messaggio(
+                                f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
+                                config.chat_id
+                            )
+                            # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
+                            ultima_notifica[indirizzo_ip] = datetime.now()
+                            # Scrivi il log solo se è la prima volta
+                            if stato_precedente_connessioni.get(indirizzo_ip, True):
+                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                stato_precedente_connessioni[indirizzo_ip] = False
+
+                if tutti_offline and not allarme_attivo:
+                    allarme_attivo = True
+                    print("Allarme attivo")
+                    await invia_messaggio("🚨 ATTENZIONE: Tutti i dispositivi sono OFFLINE! 🚨", config.chat_id)
+                elif not tutti_offline and allarme_attivo:
+                    allarme_attivo = False
+                    print("Allarme disattivo")
+                    await invia_messaggio("✅ Allarme Rientrato: Rilevata connessione attiva.", config.chat_id)
+
+                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+
+                # Gestione cambio giorno e invio report
+                await invia_file_testuale()
+
+                # Gestione retry report in sospeso
+                if report_pending_date:
+                    print(f"Tentativo invio report in sospeso per {report_pending_date}...")
+                    if await invia_contenuto_file(report_pending_date, silent=True):
+                        print(f"Report in sospeso per {report_pending_date} inviato con successo.")
+                        report_pending_date = None
+                        save_pending_report(None)
+
+            else:
+                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+                await invia_file_testuale()
+
+                # Gestione retry report in sospeso anche in modalità manutenzione
+                if report_pending_date:
+                    if await invia_contenuto_file(report_pending_date, silent=True):
+                        report_pending_date = None
+                        save_pending_report(None)
+        except Exception as e:
+            print(f"Errore nel loop di monitoraggio: {e}")
+            await asyncio.sleep(60)
+
+async def avvio_monitoraggio():
+    await monitoraggio()
+
 def main():
+    global dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
 
     scrivi_log("Avvio dello script")
 
@@ -1410,7 +1585,6 @@ def main():
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
     application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
 
-    global dispositivi_in_manutenzione
     dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
 
     # Determina la modalità manutenzione dal database
@@ -1422,148 +1596,12 @@ def main():
     cursor.close()
     cnx.close()
 
-    global modalita_manutenzione
     modalita_manutenzione = all(result[0] for result in results)
 
     # Carica report in sospeso all'avvio
-    global report_pending_date
     report_pending_date = load_pending_report()
     if report_pending_date:
         print(f"Trovato report in sospeso per la data: {report_pending_date}")
-
-    # Aggiungi un dizionario globale per tenere traccia delle notifiche inviate
-
-    async def monitoraggio():
-        global allarme_attivo, manutenzione_programmata_scadenza
-        tutti_offline = False
-        stato_precedente_connessioni = {}
-        ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
-        tempo_notifica_dispositivo = 1800  # 30 minuti
-
-        while True:
-            try:
-                # Controllo scadenza manutenzione temporanea
-                if manutenzione_programmata_scadenza and datetime.now() > manutenzione_programmata_scadenza:
-                    print("Manutenzione temporanea scaduta. Disattivazione...")
-                    await termina_manutenzione_logic()
-                    manutenzione_programmata_scadenza = None
-
-                if not modalita_manutenzione:
-                    tutti_offline = True
-
-                    # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
-                    # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
-                    try:
-                        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-                        cursor = cnx.cursor()
-                        query = ("SELECT Nome, IP FROM monitor")
-                        cursor.execute(query)
-                        dispositivi = cursor.fetchall()
-                        cursor.close()
-                        cnx.close()
-                    except mysql.connector.Error as err:
-                        print(f"Errore DB in monitoraggio: {err}")
-                        await asyncio.sleep(60)
-                        continue
-
-                    for nome_dispositivo, indirizzo_ip in dispositivi:
-                        tentativi = 0
-
-                        while tentativi < 2:
-                            connessione_attuale = await controlla_connessione(indirizzo_ip)
-                            stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
-
-                            if connessione_attuale:
-                                if stato_precedente is False:  # Se prima era offline e ora è online
-                                    if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
-                                        await invia_messaggio(
-                                            f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
-                                            config.chat_id
-                                        )
-                                        scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
-                                    # Rimuovi la notifica di offline se era stata inviata
-                                    ultima_notifica.pop(indirizzo_ip, None)
-                                stato_precedente_connessioni[indirizzo_ip] = True
-                                tutti_offline = False
-                                break
-                            else:
-                                tentativi += 1
-                                await asyncio.sleep(30)
-
-                        if not connessione_attuale:
-                            # Controlla se il dispositivo era online prima
-                            if stato_precedente is not None and stato_precedente:  # Solo se era online prima
-                                # Controlla se la notifica è già stata inviata
-                                if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
-                                    print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
-                                    await invia_messaggio(
-                                        f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
-                                        config.chat_id
-                                    )
-                                    # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
-                                    ultima_notifica[indirizzo_ip] = datetime.now()
-                                    # Scrivi il log solo se è la prima volta
-                                    if stato_precedente_connessioni.get(indirizzo_ip, True):
-                                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                        stato_precedente_connessioni[indirizzo_ip] = False
-                                else:
-                                    # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
-                                    pass
-                            stato_precedente_connessioni[indirizzo_ip] = False
-
-                        # Questa logica era stata rimossa erroneamente. La ripristino ora.
-                        if not connessione_attuale and stato_precedente is False:
-                            # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
-                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
-                                print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
-                                await invia_messaggio(
-                                    f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
-                                    config.chat_id
-                                )
-                                # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
-                                ultima_notifica[indirizzo_ip] = datetime.now()
-                                # Scrivi il log solo se è la prima volta
-                                if stato_precedente_connessioni.get(indirizzo_ip, True):
-                                    scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                    stato_precedente_connessioni[indirizzo_ip] = False
-
-                    if tutti_offline and not allarme_attivo:
-                        allarme_attivo = True
-                        print("Allarme attivo")
-                        await invia_messaggio("🚨 ATTENZIONE: Tutti i dispositivi sono OFFLINE! 🚨", config.chat_id)
-                    elif not tutti_offline and allarme_attivo:
-                        allarme_attivo = False
-                        print("Allarme disattivo")
-                        await invia_messaggio("✅ Allarme Rientrato: Rilevata connessione attiva.", config.chat_id)
-
-                    await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
-
-                    # Gestione cambio giorno e invio report
-                    await invia_file_testuale()
-
-                    # Gestione retry report in sospeso
-                    if report_pending_date:
-                        print(f"Tentativo invio report in sospeso per {report_pending_date}...")
-                        if await invia_contenuto_file(report_pending_date, silent=True):
-                            print(f"Report in sospeso per {report_pending_date} inviato con successo.")
-                            report_pending_date = None
-                            save_pending_report(None)
-
-                else:
-                    await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
-                    await invia_file_testuale()
-
-                    # Gestione retry report in sospeso anche in modalità manutenzione
-                    if report_pending_date:
-                        if await invia_contenuto_file(report_pending_date, silent=True):
-                            report_pending_date = None
-                            save_pending_report(None)
-            except Exception as e:
-                print(f"Errore nel loop di monitoraggio: {e}")
-                await asyncio.sleep(60)
-
-    async def avvio_monitoraggio():
-        await monitoraggio()
 
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())
