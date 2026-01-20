@@ -10,32 +10,21 @@ Versione : 10.0
   - [Indice](#indice)
   - [Introduzione](#introduzione)
   - [Anteprima](#anteprima)
-    - [8.1](#81)
-  - [Installazione](#installazione)
-  - [Configurazione Manuale](#configurazione-manuale)
-    - [Script di controllo 'Creazione Log'](#script-di-controllo-creazione-log)
-    - [Script di Archiviazione dei Log](#script-di-archiviazione-dei-log)
-    - [Script di verifica del servizio](#script-di-verifica-del-servizio)
-    - [NB](#nb)
-  - [Utilizzo](#utilizzo)
+  - [Funzionalità](#funzionalità)
+  - [Installazione e Configurazione](#installazione-e-configurazione)
+    - [Procedura Automatica](#procedura-automatica)
+    - [Configurazione Manuale (config.py)](#configurazione-manuale-configpy)
+  - [Architettura e Nuove Funzionalità](#architettura-e-nuove-funzionalità)
+    - [Alta Disponibilità (Failover)](#alta-disponibilità-failover)
+    - [Update Manager](#update-manager)
+    - [Sistema di Logging e Buffer Offline](#sistema-di-logging-e-buffer-offline)
+    - [Gestione Dispositivi](#gestione-dispositivi)
   - [NetworkAllarm come Servizio](#networkallarm-come-servizio)
-  - [Configurazione a due nodi](#configurazione-a-due-nodi)
-  - [Configurazione tramite Script](#configurazione-tramite-script)
-    - [NB 2](#nb-2)
-  - [Script di Aggiornamento](#script-di-aggiornamento)
-  - [Test Svolti](#test-svolti)
-  - [Futuri Upgrade](#futuri-upgrade)
-    - [Già Implementati](#già-implementati)
   - [Note sulle versioni](#note-sulle-versioni)
-    - [Versione 4.0 - 4.5](#versione-40---45)
-    - [Versione 5.10 - 6.14.5](#versione-510---6145)
-    - [Versione 7](#versione-7)
-    - [Versione 8](#versione-8)
     - [Versione 9](#versione-9)
     - [Versione 10](#versione-10)
   - [Licenza](#licenza)
   - [Autori](#autori)
-  - [Contribuire](#contribuire)
 
 ---
 
@@ -43,370 +32,197 @@ Versione : 10.0
 
 Questo progetto è un bot di monitoraggio della connessione Ethernet tramite Telegram.
 Il bot consente di avviare e terminare la modalità di manutenzione, monitorare lo stato delle connessioni Ethernet e inviare notifiche in caso di disconnessione o ripristino delle connessioni.
-La modalità manutenzione permette il blocco dell'invio delle notifiche in casi di test.
-Attualmente viene utilizzato per sopperire a delle problematiche legate ad un allarme domestico.
-Infatti il Server è collegato, insieme al Router, ad un UPS.
-Si è scelto di monitorare due dispositivi per evitare di mettere in allarme per un disservizio su un singolo dispositivo.
+
+Il sistema è progettato per operare in ambienti critici (es. monitoraggio UPS o allarmi domestici) e, a partire dalla versione 10, supporta una configurazione in **Alta Disponibilità (Failover)** su due nodi.
 
 ---
 
 ## Anteprima
 
-### 8.1
-
-<!-- markdownlint-disable MD033 -->
-<div align=center>
-
-![preview](/img/8.1%20minor.jpeg)
+![10](/img/10%20mobile.png)
 
 ---
 
-![preview](/img/8.1%20desktop.png)
+## Funzionalità
 
-</div>
-<!-- markdownlint-enable MD033 -->
+- **Monitoraggio Continuo**: Verifica costante della raggiungibilità dei dispositivi via ICMP (Ping).
+- **Notifiche Real-time**: Avvisi immediati su Telegram per disconnessioni e ripristini.
+- **Modalità Manutenzione**:
+  - *Manuale*: Attivazione/Disattivazione persistente.
+  - *Temporanea*: Silenzia le notifiche per 30m, 1h o 2h.
+- **Gestione Dispositivi (CRUD)**: Aggiungi, Modifica o Rimuovi IP da monitorare direttamente dalla chat Telegram, senza toccare i file di configurazione.
+- **Stato Connessioni**: Report istantaneo sullo stato di tutti i dispositivi monitorati.
+- **System Advance**: Monitoraggio delle risorse del server (CPU, RAM, Disco, Uptime).
+- **Log Giornaliero**: Invio automatico (o su richiesta) del file di log della giornata.
+- **Architettura Resiliente**:
+  - *Failover*: Supporto per configurazione a doppio nodo (Master/Slave).
+  - *Offline Buffer*: Salvataggio log locale se il mount di rete fallisce.
+- **Update & Backup**: Strumenti integrati per aggiornamento software e backup configurazioni.
 
 ---
 
-## Installazione
+## Installazione e Configurazione
 
-1. Clona il repository:
+Dimentica le configurazioni manuali complesse. La versione 10 introduce un installer automatico (`setup.py`) che gestisce dipendenze, database e servizi systemd.
 
-    ```code
+### Procedura Automatica
+
+1. **Clona il repository:**
+
+    ```bash
     git clone https://github.com/mauromarzocca/NetworkAllarm
     cd NetworkAllarm
     ```
 
-2. Installa le dipendenze richieste:
+2. **Esegui il Setup:**
 
-    ```code
-    pip install -r requirements.txt
+    Lancia lo script di installazione. Questo script verificherà le dipendenze di sistema (come `git` e `mysql`), installerà i pacchetti Python richiesti (`requirements.txt`) e ti guiderà nella configurazione.
+
+    ```bash
+    sudo python3 setup.py
     ```
 
-3. Installa MySQL per il tuo Sistema Operativo.
+    Durante il setup ti verrà chiesto:
+    - Se stai configurando un sistema a singolo nodo o multi-nodo (Primary/Secondary).
+    - Token del Bot e Chat ID.
+    - Credenziali del Database MySQL.
+    - Configurazione del Backup (Locale o Remoto).
 
----
+    Al termine, lo script:
+    - Genererà il file `config.py`.
+    - Creerà e popolerà il Database.
+    - Installerà e avvierà i servizi `systemd` necessari (`NetworkAllarm.service` e, se necessario, `failover-monitor.service`).
 
-## Configurazione Manuale
+### Configurazione Manuale (config.py)
 
-Modifica il file [config.py](config.py) allocato nella directory principale del progetto e aggiungi le seguenti configurazioni:
+Se preferisci configurare manualmente il sistema o devi modificare impostazioni specifiche, puoi editare il file `config.py`. Ecco una panoramica delle variabili principali:
 
-```code
-# config.py
+**Bot Telegram:**
 
-# Token del bot Telegram
-bot_token = 'il-tuo-token-bot'
+```python
+bot_token = 'IL_TUO_TOKEN'
+chat_id = 'IL_TUO_CHAT_ID'
+autorizzati = [12345678, 87654321] # Lista numerica di ID Telegram
+```
 
-# ID della chat Telegram dove inviare le notifiche
-chat_id = 'il-tuo-chat-id'
+**Database:**
 
-# Lista di utenti autorizzati a usare il bot (ID Telegram)
-autorizzati = [123456789, 987654321]
-
-# Lista di dispositivi da monitorare
-indirizzi_ping = [
-    {"nome": "Dispositivo 1", "indirizzo": "192.168.1.1"},
-    {"nome": "Dispositivo 2", "indirizzo": "192.168.1.2"},
-]
-
-# Credenziali e Nome Database
-DB_USER = 'tuo_utente'
-DB_PASSWORD = 'tua_password'
+```python
+DB_USER = 'utente_db'
+DB_PASSWORD = 'password_db'
 DB_NAME = 'NetworkAllarm'
-
+DB_HOST = 'localhost' # o IP del server DB
 ```
 
-### Script di controllo 'Creazione Log'
+**Identificazione Nodi (Multi-nodo):**
 
-Lo script di controllo [Check Log](check_log.py) verifica se il file log è stato generato, in caso negativo, forza la sua creazione.
-Per gestire ottimamente lo script occorre dargli i permessi di esecuzione tramite:
-
-```sh
-chmod +x /path/check_log.py
+```python
+NODE_ALIASES = {
+    "hostname_primario": "Nome Display Primario",
+    "hostname_secondario": "Nome Display Secondario"
+}
 ```
 
-E poi eseguirlo periodicamente tramite un crontab:
+*È fondamentale che le chiavi del dizionario corrispondano all'hostname di sistema (`hostname` da terminale).*
 
-```sh
-crontab -e
+**Failover (Alta Disponibilità):**
+
+```python
+FAILOVER_PRIMARY_URL = "http://IP_PRIMARIO:8081/health"
+FAILOVER_SERVICE_NAME = "networkallarm"
+FAILOVER_CHECK_INTERVAL = 30
 ```
 
-```sh
-5 0 * * * /usr/bin/python3 /path/check_log.py
+**Backup:**
+
+```python
+BACKUP_REMOTE_HOST = "user@ip_remoto"
+BACKUP_REMOTE_PATH = "/percorso/backup"
 ```
-
-In questo caso, eseguo il check alle ore 0.05.
-
-### Script di Archiviazione dei Log
-
-Lo script di archiviazione [Archive Log](archive_log.py) esegue un archiviazione dei log dei o del mese precedente, cercando di ottimizzare lo spazio disponibile.
-
-Consiglio di lanciarlo periodicamente tramite crontab una volta al mese, in questo modo:
-
-```sh
-chmod +x /path/archive_log.py
-```
-
-E poi eseguirlo periodicamente tramite un crontab:
-
-```sh
-crontab -e
-```
-
-```sh
-0 10 15 * * /usr/bin/python3 /path/archive_log.py
-```
-
-### Script di verifica del servizio
-
-Lo script di controllo [Check_Sevice](check_service.py) esegue una verifica che il servizio sia attivo, in caso contrario lo avvia.
-
-Si consiglia la seguente configurazione:
-
-1. Aggiungere la configurazione nel visudo
-
-    ```sh
-    sudo visudo
-    ```
-
-2. Aggiungere il nome utente ed il path
-
-    ```sh
-    user ALL=(ALL) NOPASSWD: /bin/systemctl start networkallarm.service
-    ```
-
-3. Aprire il crontab
-
-    ```sh
-    sudo crontab -e
-    ```
-
-4. Eseguire il comando:
-
-    ```sh
-    sudo pip install -r requirements.txt
-    ```
-
-5. Aggiungere la riga
-
-  ```sh
-  */10 * * * * /path/check_service.py
-  ```
-
-  Questa si occuperà di eseguire una verifica ogni 10 minuti.
-
-### NB
-
-- A partire dalla versione 7.0, tutto quello che viene incluso nella variabile 'indirizzi_ping', viene automaticamente importato nel Database.
-Di default è disabilitata, poichè è possibile gestire tutto tramite Bot.
-- Lo script di [verifica del servizio](#script-di-verifica-del-servizio) deve essere eseguito con i permessi di amministratore (root), per questo motivo si consiglia questa configurazione.
 
 ---
 
-## Utilizzo
+## Architettura e Nuove Funzionalità
 
-Avvia lo script principale per iniziare il monitoraggio:
+### Alta Disponibilità (Failover)
 
-```code
-python main.py
-```
+Il sistema supporta ora una configurazione **Attivo/Passivo** su due nodi (es. due Raspberry Pi).
 
-Il bot Telegram risponderà ai comandi /start e gestirà i pulsanti per avviare e terminare la modalità di manutenzione.
+- **Nodo Primario:** Esegue il monitoraggio standard.
+- **Nodo Secondario:** Esegue un servizio leggero (`failover-monitor.py`) che controlla costantemente la salute del primario tramite un endpoint HTTP dedicato.
+- **Switch Automatico:** Se il primario non risponde, il secondario attiva automaticamente l'istanza di NetworkAllarm locale e notifica lo switch tramite Telegram. Quando il primario torna online, il secondario cede nuovamente il controllo.
+
+### Update Manager
+
+Il nuovo script `update_manager.py` facilita la manutenzione del codice:
+
+- **GitHub Update:** Scarica l'ultima versione dal branch `main` e fonde intelligentemente le nuove configurazioni nel tuo `config.py` locale preservando le tue impostazioni personalizzate.
+- **Manual Update:** Permette di selezionare un file, eseguirne il backup e aprirlo con `vi` per modifiche rapide in loco.
+
+### Sistema di Logging e Buffer Offline
+
+Per garantire la robustezza anche quando la cartella dei log (spesso montata via rete/SSHFS) non è disponibile:
+
+- Il sistema scrive su un **Buffer Locale** in caso di disconnessione del mount point.
+- Una volta ripristinata la connessione, il buffer viene riversato nei file di log ufficiali mantenendo l'ordine cronologico.
+- Le operazioni di I/O pesanti sono gestite in thread separati per non bloccare il loop principale del bot.
+
+### Gestione Dispositivi
+
+Il menu "Gestione Dispositivo" utilizza ora tastiere `Inline` (pulsanti sotto i messaggi) per un'esperienza più fluida, permettendo di Aggiungere, Modificare o Cancellare dispositivi monitorati direttamente da Telegram.
 
 ---
 
 ## NetworkAllarm come Servizio
 
-Per avviare NetworkAllarm all'avvio, occorre lanciare il comando:
+Per avviare NetworkAllarm all'avvio senza usare lo script automatico, occorre configurare manualmente systemd:
 
-```code
-sudo nano /etc/systemd/system/networkallarm.service
-```
+1. Crea il file di servizio:
 
-Modificare il file inserendo:
+    ```bash
+    sudo nano /etc/systemd/system/networkallarm.service
+    ```
 
-```code
-[Unit]
-Description=NetworkAllarm
-After=network.target
+2. Inserisci il seguente contenuto, modificando i percorsi e l'utente:
 
-[Service]
-ExecStart=/usr/bin/python3 /percorso/al/tuo/script/main.py
-WorkingDirectory=/percorso/al/tuo/script
-StandardOutput=inherit
-StandardError=inherit
-Restart=always
-User=<user>
+    ```ini
+    [Unit]
+    Description=NetworkAllarm
+    After=network.target
 
-[Install]
-WantedBy=multi-user.target
-```
+    [Service]
+    # Sostituisci /percorso/al/tuo/script con la path reale (es. /home/pi/NetworkAllarm)
+    ExecStart=/usr/bin/python3 /percorso/al/tuo/script/main.py
+    WorkingDirectory=/percorso/al/tuo/script
+    StandardOutput=inherit
+    StandardError=inherit
+    Restart=always
+    # Sostituisci <user> con il tuo utente linux (es. pi)
+    User=<user>
 
-**RICORDATI DI MODIFICARE IL PERCORSO E L'USER.**
+    [Install]
+    WantedBy=multi-user.target
+    ```
 
-Infine lanciare i comandi:
+3. Abilita e avvia il servizio:
 
-```code
-sudo systemctl daemon-reload
-sudo systemctl enable networkallarm.service
-sudo systemctl start networkallarm.service
-```
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable networkallarm.service
+    sudo systemctl start networkallarm.service
+    ```
 
-Verifica tramite il comando:
+4. Verifica lo stato:
 
-```code
-sudo systemctl status networkallarm.service
-```
-
----
-
-## Configurazione a due nodi
-
-A partire dalla versione 10, è possibile utilizzare una configurazione a due nodi.
-Si consiglia:
-
-- Connettere i due DB rendendoli entrambi Master in modo tale che siano sincronizzati
-- Montare la directory dei log come path comune fra i due nodi. Non è consigliato condividere l'intera folder in quanto le dipendenze potrebbero avere due architetture distinte.
-
-Occorre posizionare il file [failover-monitor](failover-monitor.py) nel server che gestisce i servizi, ad esempio nel mio caso in un RPI connesso ad un UPS.
-Questo esegue 'curl http://<IP_CONTAINER>: 8081/health' sull'altro nodo, quando riceve un timeout/errore, avvia il servizio su se stesso.
-Tramite il file [notify_switch](notify_switch.py) notifica lo switch.
-Quando curl restituisce 'OK 200', allora stopperà il suo servizio, in quanto è già presente l'altro.
-
-Per questa configurazione si consiglia di non utilizzare il file [check_service](check_service.py) e di configurare i file [failover-monitor](failover-monitor.py) e [notify_switch](notify_switch.py).
-
-## Configurazione tramite Script
-
-Tramite lo script [configure](configure.py) si procede alla configurazione automatica, dove occorre inserire:
-
-- bot_token (Token del Bot)
-- chat_id (ID del canale)
-- ID autorizzati (ID Telegram di chi può usare il bot)
-- Credenziali MySQL (utente e password)
-- Dispositivo da monitorare
-
-Tutte queste informazioni vengono salvate nel file [config.py](config.py).
-
-Questo script effettua il clone di questa repository e verifica eventuali aggiornamenti.
-
-### NB 2
-
-- Questo script è stato testato su Ubuntu (da 20.04 a 24.10), per le versioni ARM occorre rimuovere la riga 'check_and_install('mysql-server')' ed installato manualmente.
-- Questo script non consente una configurazione a più nodi. Inoltre è possibile utilizzare il DB solo come localhost.
-
----
-
-## Script di Aggiornamento
-
-É stato introdotto uno script di aggiornamento, il cui compito è quello di arrestare il servizio, eseguire una copia del file main.py, rimuovere il file e permette l'inserimento del codice completo.
-Questo script deve essere eseguito con i permessi di amministratore.
-
----
-
-## Test Svolti
-
-I test sono stati svolti su un MacBook Pro M1 Pro con MacOS Sonoma e su un Raspberry Pi 3 e 4 con Ubuntu Server.
-Inoltre, sono stati svolti dei test su un Container Proxmox ed utilizzato in configurazione a due nodi.
-
----
-
-## Futuri Upgrade
-
-- Creazione del container Docker.
-- Bug Fix continuo.
-- Versione Inglese.
-
-### Già Implementati
-
-- ~~Miglioramento delle notifiche nel caso in cui tutti i dispositivi non rispondono.~~ (Risolto nella Build 6.0.1)
-- ~~Ping dal Bot~~ (Introdotto nella Build 6.5 con lo Stato Connessione)
-- ~~Maintenence Mode anche per dispositivi singoli.~~ (Implementato nella build 6.14)
-- ~~Utilizzo di un database~~. (Implementato nella build 7.0)
-- ~~Gestione dei dispositivi da monitorare tramite bot.~~ (Implementato nella Build 7.3)
+    ```bash
+    sudo systemctl status networkallarm.service
+    ```
 
 ---
 
 ## Note sulle versioni
 
-### Versione 4.0 - 4.5
-
-  Novità: Inserito il file config.py per una configurazione più flessibile e centralizzata.
-  Modifiche: Tutte le impostazioni statiche e sensibili sono state spostate nel file config.py.
-
-### Versione 5.10 - 6.14.5
-
-  Novità: Suddivisione del programma in più file per migliorare la leggibilità e la manutenzione del codice.
-
-  Modifiche:
-  
-- [main.py](./main.py): Script principale per l'avvio del bot e del monitoraggio.
-- [bot.py](bot.py): Contiene le funzioni per la gestione del bot Telegram.
-- [monitor.py](./monitor.py): Contiene le funzioni per il monitoraggio della connessione Ethernet.
-- [utils.py](./utils.py): Contiene funzioni di utilità generiche (invio messaggi, logging, ecc.).
-- [status.py](./status.py): Contiene lo stato della modalità di manutenzione.
-
-- Versione 6.0.1 : Bug Fix.
-- Versione 6.1 : Vengono mantenuti solo i file main e config per alcune problematiche. Inoltre, è stato aggiunto un allarme più invasivo nel caso in cui tutti i dispositivi siano disconnessi.
-- Versione 6.3 : Migliorata la gestione dei log e ottimizzazioni varie.
-- Versione 6.5 : Implementato il pulsante "Stato Connessione" che invia un messaggio sullo stato delle connessioni dei dispositivi presenti nel file config.
-- Versione 6.6 : Implementato l'invio del Log Giornaliero tramite un pulsante nel Bot.
-- Versione 6.8 : Migliorata la visualizazzione del Bot
-- Versione 6.9 : Bug Fix e impostata la cancellazione automatica dei messaggi dopo sette giorni.
-- Versione 6.9.1 : Bug Fix.
-- Versione 6.9.2 : Ottimizzazione del codice.
-- Versione 6.10 : Implementazione dell'evento "Inizio Giornata"
-- Versione 6.11 : Eliminazione di codice ridondante.
-- Versione 6.12 : Implementata la possibilità di configurare il path di salvataggio nel file config invece che nel main.
-- Versione 6.12.1 : Bug Fix
-- Versione 6.13 : Migliorato il codice, in particolare se nel log è presente solo la stringa "Avvio dello Script" e "Inizio giornata", verrà inviato solo "Nessun evento da segnalare".
-- Versione 6.14 : Implementata la funzionalità "Maintenence" che permette di mettere in manutenzione il dispositivo singolo. Viene gestita tramite bottoni.
-- Versione 6.14.1 : Migliorata "Maintenence".
-- Versione 6.14.2 : Migliorata tabulazione di "Stato connessione".
-- Versione 6.14.3 : Bug Fix
-- Versione 6.14.4 : Inserito il conteggio di "Avvio dello script".
-- Versione 6.14.5 : Miglioramento dell'invio del log.
-
-### Versione 7
-
-<!-- markdownlint-disable MD033 -->
-
-- Versione 7.0 : Implementazione di un Database MySQL.<br>
-  Novità : Adesso è presente un Database, chiamato NetworkAllarm, che gestisce i dispositivi e lo stato di Maintenence.<br>
-  Tutti i dispositivi presenti nella variabile indirizzi_ping del file [config.py](./config.py) vengono importati nel database all'avvio dello script.
-- Versione 7.0.1 : Bug Fix.
-- Versione 7.0.2 : Ottimizazzione del codice.
-- Versione 7.1 : Aggiunta funzione di "Aggiunta Dispositivo".
-- Versione 7.1.1 : Miglioramento generale del codice.
-- Versione 7.1.2 : Miglioramento della migrazione dal file config.py al DB.
-- Versione 7.2 : Aggiunta funzione di "Rimozione Dispositivo".
-- Versione 7.3 : Aggiunta funzione di "Modifica Dispositivo".
-- Versione 7.3.1 : Bug Fix nella funzione di "Modifica Dispositivo".
-- Versione 7.4 : Migliorata la UI.
-- Versione 7.4.1 : Bug Fix.
-- Versione 7.4.2 : Ottimizzazione del codice.
-- Versione 7.5 : Creazione di uno script di controllo per il file log.
-- Versione 7.5.1 : Bug Fix dello script di verifica del file di log.
-- Versione 7.6 : Creazione di uno script che archivia la directory contenente i log del mese precedente per ottimizzare lo spazio disponibile.
-- Versione 7.7 : Creazione di uno script che verifica che il servizio sia attivo, in caso non lo fosse lo avvia automaticamente.
-- Versione 7.7.1 : Bug Fix.
-
-### Versione 8
-
-- Versione 8.0 : Creazione di uno script che automatizzi l'installazione e l'aggiornamento di NetworkAllarm.
-- Versione 8.1 : Ottimizzazione generale del codice.
-- Versione 8.1.1 : Bug Fix.
-- Versione 8.1.2 : Migliorata Documentazione.
-- Versione 8.1.3 : Bug Fix allo script 'Archive Log'.
-- Versione 8.2 : Creazione degli script di [Backup](./backup.py) e di [Restore](./restore.py).
-- Versione 8.2.1 : Miglioramento dello script ["restore"](./restore.py).
-- Versione 8.2.2 : Miglioramento dello script ["backup"](./backup.py), nello specifico aggiunto il trasferimento in un altro host. Tuttavia, nel caso in cui non si voglia questa funzione, è presente questo [file](./backup_no_transfer.py).
-- Versione 8.2.3 : Risolta problematica relativa alla generazione esterna del file di log.
-- Versione 8.3 : Miglioramento della gestione degli allarmi.
-- Versione 8.3.1 : Risolto un problema relativo al pulsante "Start".
-- Versione 8.3.2 : Risolte problematiche relativo all'invio delle notifiche.
-- Versione 8.3.3 : Risolte problematiche relative all'aggiunta di un dispositivo in Maintenence Mode.
-- Versione 8.4 : Creazione dello script di [aggiornamento](./upgrade.py) automatico.
-- Versione 8.4.1 : Migliorata la UI del Bot.
+Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
 
 ### Versione 9
 
@@ -426,7 +242,19 @@ Inoltre, sono stati svolti dei test su un Container Proxmox ed utilizzato in con
 
 ### Versione 10
 
-<!-- markdownlint-enable MD033 -->
+**Nuove Features:**
+
+- **Installer Unificato (`setup.py`):** Sostituisce `configure.py` e le guide manuali. Gestisce dipendenze apt/pip, configurazione DB e creazione servizi systemd.
+- **High Availability:** Introdotto sistema di Failover con monitoraggio heartbeat tra due nodi.
+- **Update Manager:** Strumento per aggiornamenti "smart" dal repository GitHub e editing manuale sicuro.
+- **Log Robustness:** Gestione avanzata dei log con buffer offline e protezione da blocchi I/O su mount di rete instabili.
+- **Inline Menus:** Migliorata la UX per la gestione dispositivi.
+
+**Modifiche Tecniche:**
+
+- **Refactoring:** `utils.py` separato e reso indipendente per evitare import circolari e dipendenze bloccanti.
+- **Configurazione:** `config.py` ora centralizza TUTTE le variabili, inclusi i path dinamici e le configurazioni di failover.
+- **Rimozioni:** Eliminati script obsoleti (`check_log.py`, `check_service.py`) ora integrati nel core o gestiti da systemd.
 
 ---
 
@@ -439,13 +267,3 @@ Questo progetto è rilasciato sotto la [MIT License](./LICENSE).
 ## Autori
 
 - [Mauro Marzocca](https://github.com/mauromarzocca)
-
-Per qualsiasi domanda o problema, non esitare a aprire un issue.
-
----
-
-## Contribuire
-
-Se desideri contribuire a questo progetto, per favore crea un fork del repository, crea una nuova branch per le tue modifiche e invia una pull request.
-
----
