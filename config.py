@@ -31,3 +31,32 @@ fs_monitor = {
 DB_USER = 'tuo_utente'
 DB_PASSWORD = 'tua_password'
 DB_NAME = 'NetworkAllarm'
+
+# --- Nuove configurazioni aggiunte per centralizzazione ---
+
+# Network & Database Configuration
+DB_HOST = 'localhost'
+
+# Health Check Server
+HEALTH_SERVER_PORT = 8081
+
+# Threading
+MAX_WORKERS = 10
+
+# Node Identification (Hostname -> Display Name)
+NODE_ALIASES = {
+    "first_device": "First Device",
+    "second_device": "Second Device"
+}
+
+# Backup Configuration
+PROJECT_NAME = "NetworkAllarm"
+BACKUP_DIR_NAME = "Backup NetworkAllarm"
+BACKUP_REMOTE_HOST = "user@IP_HOST"
+BACKUP_REMOTE_PATH = "PATH/TO/BACKUP"
+
+# Failover Configuration
+FAILOVER_PRIMARY_URL = "http://IP:8081/health"
+FAILOVER_SERVICE_NAME = "networkallarm"
+FAILOVER_CHECK_INTERVAL = 30
+FAILOVER_LOG_FILE = "log/failover-monitor.log"

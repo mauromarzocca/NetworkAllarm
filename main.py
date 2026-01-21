@@ -9,7 +9,8 @@ import config
 from config import cartella_log_base, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
-import mysql.connector
+import socket
+from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release
 import ipaddress
 import paramiko
 import re
@@ -17,13 +18,41 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-DB_HOST = 'localhost'
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+version = "10.0"
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def start_health_server():
+    # Ascolta su TUTTE le interfacce di rete
+    server = HTTPServer(('0.0.0.0', config.HEALTH_SERVER_PORT), HealthHandler)
+    server.serve_forever()
+
+# Funzione per determinare il nodo corrente
+def get_nodo_corrente():
+    hostname = socket.gethostname()
+    return config.NODE_ALIASES.get(hostname, hostname)
+
+# Avvia in un thread separato (all'inizio del programma, dopo gli import)
+threading.Thread(target=start_health_server, daemon=True).start()
+
+DB_HOST = config.DB_HOST
 DB_NAME = config.DB_NAME
 DB_USER = config.DB_USER
 DB_PASSWORD = config.DB_PASSWORD
 
 # Executor per task bloccanti
-executor = ThreadPoolExecutor(max_workers=10)
+executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS)
 
 def create_database_if_not_exists():
     #Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
@@ -85,7 +114,7 @@ def create_database_and_table():
         cnx = mysql.connector.connect(
             user=config.DB_USER,
             password=config.DB_PASSWORD,
-            host='localhost',
+            host=DB_HOST,
             database=config.DB_NAME
         )
         cursor = cnx.cursor()
@@ -120,17 +149,14 @@ def create_database_and_table():
 create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
+# Variabile per tracciare l'ultimo cambio giorno (inizializzata alla data corrente all'avvio)
+ultimo_cambio_giorno = datetime.now(pytz.timezone('Europe/Rome')).date()
+# Variabile per la manutenzione temporanea
+manutenzione_programmata_scadenza = None
 
-def get_current_log_path():
-    anno_corrente = datetime.now().strftime('%Y')
-    mese_corrente = datetime.now().strftime('%m')
-    data_corrente = datetime.now().strftime("%Y-%m-%d")
-
-    cartella_log = os.path.join(cartella_log_base, anno_corrente, mese_corrente)
-    if not os.path.exists(cartella_log):
-        os.makedirs(cartella_log)
-
-    return os.path.join(cartella_log, f"{data_corrente}.txt")
+# Variabili globali aggiunte
+dispositivi_in_manutenzione = set()
+modalita_manutenzione = False
 
 def recupera_dispositivi_in_manutenzione():
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -158,46 +184,6 @@ def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
     cursor.close()
     cnx.close()
 
-# Funzione per inviare un messaggio
-async def invia_messaggio(messaggio, chat_id, reply_markup=None):
-    bot = Bot(token=config.bot_token)
-    try:
-        messaggio_inviato = await bot.send_message(chat_id=chat_id, text=messaggio, reply_markup=reply_markup)
-        message_id = messaggio_inviato.message_id
-        asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, message_id, 7 * 24 * 60 * 60))
-        return message_id
-    except Exception as e:
-        print(f"Errore durante l'invio del messaggio: {e}")
-
-# Funzione per inviare un messaggio suddividendolo in parti più piccole se necessario
-async def invia_messaggi_divisi(messaggio, chat_id):
-    bot = Bot(token=config.bot_token)
-    try:
-        righe = messaggio.split('\n')
-        for i in range(0, len(righe), 10):
-            parte = '\n'.join(righe[i:i+10])
-            messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte)
-            asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, 7 * 24 * 60 * 60))
-    except Exception as e:
-        print(f"Errore durante l'invio del messaggio: {e}")
-
-# Funzione per cancellare un messaggio dopo un certo delay
-async def cancella_messaggio_dopo_delay(chat_id, message_id, delay):
-    await asyncio.sleep(delay)
-    bot = Bot(token=config.bot_token)
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        print(f"Errore durante la cancellazione del messaggio: {e}")
-
-# Funzione per modificare un messaggio esistente
-async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
-    bot = Bot(token=config.bot_token)
-    try:
-        await bot.edit_message_text(chat_id=chat_id, message_id=messaggio_id, text=nuovo_testo)
-    except Exception as e:
-        print(f"Errore durante la modifica del messaggio: {e}")
-
 # Funzione sincrona per eseguire il ping (bloccante)
 def _esegui_ping_sync(indirizzo):
     comando_ping = ['ping', '-c', '1', indirizzo]
@@ -211,6 +197,10 @@ def _esegui_ping_sync(indirizzo):
     except Exception as e:
         print(f"Errore durante il ping per {indirizzo}: {e}")
         return False
+
+def _read_file_sync(filepath):
+    with open(filepath, 'r') as file:
+        return file.readlines()
 
 # Funzione asincrona che wrappa il ping sincrono
 async def controlla_connessione(indirizzo):
@@ -240,45 +230,96 @@ async def controlla_connessione(indirizzo):
 
     # Effettua il controllo di connessione in un thread separato
     return await loop.run_in_executor(executor, _esegui_ping_sync, indirizzo)
-    
-# Funzione per scrivere l'orario e il tipo di evento in un file di log
-def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
-    ora_evento = datetime.now().strftime('%H:%M:%S')
-    
-    nome_file = get_current_log_path()
-    
-    if nome_dispositivo and indirizzo_ip:
-        evento = f"{ora_evento} - {tipo_evento} - {nome_dispositivo} ({indirizzo_ip})"
-    else:
-        evento = f"{ora_evento} - {tipo_evento}"
 
-    with open(nome_file, 'a') as file:
-        file.write(evento + '\n')
+# Variabile globale per tracciare il report in sospeso
+report_pending_date = None
+PENDING_REPORT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "report_pending.txt")
+
+def save_pending_report(date_str):
+    try:
+        os.makedirs(os.path.dirname(PENDING_REPORT_FILE), exist_ok=True)
+        # Sovrascrive il file: con la data se presente, o con stringa vuota se None
+        with open(PENDING_REPORT_FILE, "w") as f:
+            f.write(date_str if date_str else "")
+    except Exception as e:
+        print(f"Errore salvataggio pending report: {e}")
+
+def load_pending_report():
+    try:
+        os.makedirs(os.path.dirname(PENDING_REPORT_FILE), exist_ok=True)
+        if not os.path.exists(PENDING_REPORT_FILE):
+            # Crea il file vuoto se non esiste
+            with open(PENDING_REPORT_FILE, "w") as f:
+                f.write("")
+            return None
+
+        with open(PENDING_REPORT_FILE, "r") as f:
+            content = f.read().strip()
+            return content if content else None
+    except Exception as e:
+        print(f"Errore caricamento pending report: {e}")
+    return None
 
 # Funzione per inviare il contenuto del file testuale del giorno precedente a mezzanotte
 async def invia_file_testuale():
+    global ultimo_cambio_giorno, report_pending_date
     ora_corrente = datetime.now(pytz.timezone('Europe/Rome'))
-    if ora_corrente.hour == 0 and ora_corrente.minute == 0:
+    data_corrente = ora_corrente.date()
+
+    # Se la data corrente è diversa dall'ultima registrata, è iniziato un nuovo giorno
+    if data_corrente > ultimo_cambio_giorno:
         scrivi_log("Inizio Giornata")
         print("Invio del contenuto del file testuale del giorno precedente.")
-        await invia_contenuto_file()
 
-async def invia_contenuto_file():
-    print("Invio del contenuto del file testuale del giorno precedente.")
+        # Calcola la data del giorno precedente
+        data_precedente = (ora_corrente - timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # Tenta di inviare il report
+        inviato = await invia_contenuto_file(data_precedente)
+
+        if not inviato:
+            # Se fallisce, memorizza la data per riprovare
+            report_pending_date = data_precedente
+            save_pending_report(report_pending_date)
+            print(f"Report per {data_precedente} messo in sospeso.")
+        else:
+            report_pending_date = None
+            save_pending_report(None)
+
+        ultimo_cambio_giorno = data_corrente
+
+async def invia_contenuto_file(data_target=None, silent=False):
+    """
+    Invia il contenuto del file di log per una data specifica.
+    Restituisce True se inviato con successo, False altrimenti.
     
-    data_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y-%m-%d')
+    Args:
+        data_target (str): Data in formato 'YYYY-MM-DD'. Se None, usa ieri.
+        silent (bool): Se True, non invia messaggi di errore su Telegram.
+    """
+    if data_target:
+        data_log = data_target
+        # Parsing della data per ottenere anno e mese
+        dt_target = datetime.strptime(data_target, '%Y-%m-%d')
+        anno_log = dt_target.strftime('%Y')
+        mese_log = dt_target.strftime('%m')
+    else:
+        print("Invio del contenuto del file testuale del giorno precedente.")
+        dt_precedente = datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)
+        data_log = dt_precedente.strftime('%Y-%m-%d')
+        anno_log = dt_precedente.strftime('%Y')
+        mese_log = dt_precedente.strftime('%m')
     
-    # Suddivisione in cartelle per anno e mese
-    anno_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%Y')
-    mese_precedente = (datetime.now(pytz.timezone('Europe/Rome')) - timedelta(days=1)).strftime('%m')
-    
-    cartella_log = os.path.join(cartella_log_base, anno_precedente, mese_precedente)
-    
-    nome_file = f"{cartella_log}/{data_precedente}.txt"
+    cartella_log = os.path.join(cartella_log_base, anno_log, mese_log)
+    nome_file = f"{cartella_log}/{data_log}.txt"
 
     try:
-        with open(nome_file, 'r') as file:
-            contenuto_file = file.readlines()
+        loop = asyncio.get_running_loop()
+        # Use wait_for to prevent infinite hang if disk is in D-state
+        contenuto_file = await asyncio.wait_for(
+            loop.run_in_executor(executor, _read_file_sync, nome_file),
+            timeout=10.0
+        )
 
         # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
@@ -288,9 +329,11 @@ async def invia_contenuto_file():
         contenuto_da_inviare = [line.strip() for line in contenuto_file if not any(
             excl in line.lower() for excl in ["inizio giornata", "avvio dello script", "servizio avviato", "generazione esterna"])]
 
+        intestazione = f"📄 Report del {data_log}"
+
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
-            await invia_messaggio("✅ Nessun evento da segnalare.", config.chat_id)
+            await invia_messaggio(f"{intestazione}\n✅ Nessun evento da segnalare.", config.chat_id)
             # Conta il numero di occorrenze di "Avvio dello script"
             numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
             if numero_avvii > 1:
@@ -306,13 +349,18 @@ async def invia_contenuto_file():
                 messaggio_serivio = f"Avvio dello script : {numero_servizi}"
                 contenuto_da_inviare.insert(0, messaggio_serivio)
 
-            contenuto_da_inviare = '\n'.join(contenuto_da_inviare)
-            print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare)
-            await invia_messaggi_divisi(contenuto_da_inviare, config.chat_id)
+            contenuto_da_inviare.insert(0, intestazione)
+            contenuto_da_inviare_str = '\n'.join(contenuto_da_inviare)
+            print("Contenuto del file testuale del giorno precedente:", contenuto_da_inviare_str)
+            await invia_messaggi_divisi(contenuto_da_inviare_str, config.chat_id)
+
+        return True
     
     except Exception as e:
-        print("Errore durante la lettura del file di log:", str(e))
-        await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_precedente}: {str(e)}", config.chat_id)
+        print(f"Errore durante la lettura del file di log {data_log}: {str(e)}")
+        if not silent:
+            await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", config.chat_id)
+        return False
 
 async def invia_log_corrente(chat_id):
     data_corrente = datetime.now(pytz.timezone('Europe/Rome')).strftime('%Y-%m-%d')
@@ -324,8 +372,12 @@ async def invia_log_corrente(chat_id):
     nome_file = f"{cartella_log}/{data_corrente}.txt"
     
     try:
-        with open(nome_file, 'r') as file:
-            contenuto_file = file.readlines()
+        loop = asyncio.get_running_loop()
+        # Use wait_for to prevent infinite hang if disk is in D-state
+        contenuto_file = await asyncio.wait_for(
+            loop.run_in_executor(executor, _read_file_sync, nome_file),
+            timeout=10.0
+        )
         
         # Conta il numero di occorrenze di "Avvio dello script"
         numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
@@ -360,7 +412,8 @@ async def invia_log_corrente(chat_id):
     
     except Exception as e:
         print("Errore durante la lettura del file di log:", str(e))
-        await invia_messaggio(f"⚠️ Errore durante la lettura del file di log del {data_corrente}: {str(e)}", chat_id)
+        await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", chat_id)
+        return
 
 cnx = None
 
@@ -411,7 +464,7 @@ async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE)
             scrivi_log("Errore: connessione al database non disponibile")
             await invia_messaggio("Errore: connessione al database non disponibile", config.chat_id)
 
-async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def termina_manutenzione_logic():
     global modalita_manutenzione, dispositivi_in_manutenzione, allarme_attivo
     
     if modalita_manutenzione:
@@ -424,13 +477,19 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
         dispositivi_in_manutenzione.clear()
         
         # Aggiorna il valore di Maintenence nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("UPDATE monitor SET Maintenence = FALSE")
-        cursor.execute(query)
-        cnx.commit()
-        cursor.close()
-        cnx.close()
+        try:
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("UPDATE monitor SET Maintenence = FALSE")
+            cursor.execute(query)
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+        except Exception as e:
+            print(f"Errore durante aggiornamento DB in termina_manutenzione: {e}")
+
+async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await termina_manutenzione_logic()
 
 def utente_autorizzato(user_id):
     return user_id in config.autorizzati
@@ -438,13 +497,32 @@ def utente_autorizzato(user_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if utente_autorizzato(user.id):
+        nodo = get_nodo_corrente()
+
+        # Controllo aggiornamenti
+        try:
+            loop = asyncio.get_running_loop()
+            latest_version, is_new = await loop.run_in_executor(executor, check_new_release, version)
+        except Exception as e:
+            print(f"Errore controllo aggiornamenti: {e}")
+            latest_version, is_new = None, False
+
+        version_msg = f"Versione: <b>{version}</b>"
+        if latest_version:
+            if is_new:
+                version_msg += f"\n⚠️ <b>Nuova versione disponibile: {latest_version}</b>"
+            else:
+                version_msg += " (Aggiornato)"
+
+        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n{version_msg}\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
         await update.message.reply_text(
-            'Ciao! Usa i pulsanti qui sotto per gestire il sistema.',
-            reply_markup=get_custom_keyboard()
+            messaggio,
+            reply_markup=get_custom_keyboard(),
+            parse_mode="HTML"
         )
     else:
         await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
-
+        
 async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
@@ -474,28 +552,24 @@ def get_keyboard():
 
 def get_custom_keyboard():
     button_list = [
-        KeyboardButton("🔧 Inizio Manutenzione"),
-        KeyboardButton("✅ Fine Manutenzione"),
-        KeyboardButton("📈 Stato Connessioni"),
-        KeyboardButton("📝 Log Giornaliero"),
         KeyboardButton("🔧 Manutenzione"),
-        KeyboardButton("⚙️ Aggiungi Dispositivo"),
-        KeyboardButton("⚙️ Modifica Dispositivo"),
-        KeyboardButton("⚙️ Rimuovi Dispositivo"),
+        KeyboardButton("⏲️ Manutenzione Temporanea"),
+        KeyboardButton("📝 Log Giornaliero"),
+        KeyboardButton("⚙️ Gestione Dispositivo"),
+        KeyboardButton("📈 Stato Connessioni"),
         KeyboardButton("🖥️ System Advance"),
-        KeyboardButton("☑️ Start")  # Aggiungi questo pulsante
+        KeyboardButton("☑️ Start")
     ]
     
     return ReplyKeyboardMarkup([
-        button_list[:2], 
-        button_list[2:4], 
-        button_list[4:6], 
-        button_list[6:8],
-        button_list[8:10]  # System Advance e Start
-        #[button_list[8]]  # Aggiungi il pulsante /start in una nuova riga
+        [button_list[0], button_list[1]],
+        [button_list[2], button_list[3]],
+        [button_list[4]],
+        [button_list[5], button_list[6]]
     ], resize_keyboard=True)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global manutenzione_programmata_scadenza
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -519,6 +593,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
+    elif query.data == 'manutenzione_on_global':
+        if not modalita_manutenzione:
+            await avvia_manutenzione(update, context)
+        else:
+            await invia_messaggio("La manutenzione è già attiva.", chat_id)
+    elif query.data == 'manutenzione_off_global':
+        if modalita_manutenzione:
+            manutenzione_programmata_scadenza = None # Resetta timer se presente
+            await termina_manutenzione(update, context)
+        else:
+            await invia_messaggio("La manutenzione non è attiva.", chat_id)
+    elif query.data.startswith('manutenzione_temp_'):
+        minuti = int(query.data.split('_')[2])
+        manutenzione_programmata_scadenza = datetime.now() + timedelta(minutes=minuti)
+        await invia_messaggio(f"Manutenzione temporanea attivata per {minuti} minuti.", chat_id)
+        if not modalita_manutenzione:
+            await avvia_manutenzione(update, context)
     elif query.data.startswith("system_advance_info_"):
         parts = query.data.split("_")
         nome_dispositivo = parts[3]
@@ -625,26 +716,43 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
-    if text == "🔧 Inizio Manutenzione":
-        await avvia_manutenzione(update, context)
-    elif text == "✅ Fine Manutenzione":
-        await termina_manutenzione(update, context)
+    if text == "🔧 Manutenzione":
+        await menu_manutenzione(update, context)
     elif text == "📈 Stato Connessioni":
         await verifica_stato_connessioni(update, context)
     elif text == "📝 Log Giornaliero":
         await invia_log_giornaliero(update, context)
-    elif text == "🔧 Manutenzione":
-        await gestisci_manutenzione(update, context)
-    elif text == "⚙️ Aggiungi Dispositivo":
-        await aggiungi_dispositivo_callback(update, context)
-    elif text == "⚙️ Modifica Dispositivo":
-        await modifica_dispositivo(update, context)
-    elif text == "⚙️ Rimuovi Dispositivo":
-        await rimuovi_dispositivo(update, context)
-    elif text == "☑️ Start":
-        await start(update, context)
+    elif text == "⏲️ Manutenzione Temporanea":
+        await menu_manutenzione_temporanea(update, context)
     elif text == "🖥️ System Advance":  
         await system_advance_menu(update, context)
+    elif text == "⚙️ Gestione Dispositivo":
+        await menu_gestione_dispositivo(update, context)
+    elif text == "☑️ Start":
+        await start(update, context)
+
+async def menu_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("✅ Attiva (ON)", callback_data='manutenzione_on_global'),
+         InlineKeyboardButton("❌ Disattiva (OFF)", callback_data='manutenzione_off_global')]
+    ]
+    await invia_messaggio("Gestione Manutenzione Globale:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def menu_manutenzione_temporanea(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("30 Minuti", callback_data='manutenzione_temp_30'),
+         InlineKeyboardButton("1 Ora", callback_data='manutenzione_temp_60'),
+         InlineKeyboardButton("2 Ore", callback_data='manutenzione_temp_120')]
+    ]
+    await invia_messaggio("Seleziona la durata della manutenzione:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Aggiungi", callback_data='aggiungi_dispositivo_callback'),
+         InlineKeyboardButton("Modifica", callback_data='modifica_dispositivo'),
+         InlineKeyboardButton("Cancella", callback_data='rimuovi_dispositivo')]
+    ]
+    await invia_messaggio("Gestione Dispositivo:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     global dispositivi_in_manutenzione
@@ -1257,6 +1365,7 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
     await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
 
 async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
+    global dispositivi_in_manutenzione
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
 
@@ -1268,7 +1377,6 @@ async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
     cnx.close()
 
     # Rimuovi il dispositivo dalla lista di quelli in manutenzione
-    global dispositivi_in_manutenzione
     dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))
 
     scrivi_log(f"Rimosso Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
@@ -1307,113 +1415,89 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     scrivi_log(f"Modificato Dispositivo : {nome_vecchio} - {indirizzo_ip} -> {nome_nuovo} - {indirizzo_ip}")
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
-def main():
+async def monitoraggio():
+    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
+    tutti_offline = False
+    stato_precedente_connessioni = {}
+    ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
+    tempo_notifica_dispositivo = 1800  # 30 minuti
 
-    scrivi_log("Avvio dello script")
+    # Variabili per controllo aggiornamenti
+    next_update_check = datetime.now()
+    last_notified_remote_version = None
 
-    application = ApplicationBuilder().token(config.bot_token).build()
-    
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("menu", mostra_menu))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Inizio Manutenzione|✅ Fine Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|🔧 Manutenzione|⚙️ Aggiungi Dispositivo|⚙️ Rimuovi Dispositivo|⚙️ Modifica Dispositivo|🖥️ System Advance|☑️ Start)$"), button_handler))
-    
-    application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
-    application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
-    application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
+    while True:
+        try:
+            # Controllo aggiornamenti periodico (ogni 4 ore o all'avvio)
+            if datetime.now() >= next_update_check:
+                try:
+                    latest_remote, is_new = await asyncio.get_running_loop().run_in_executor(
+                        executor, check_new_release, version
+                    )
+                    if is_new and latest_remote != last_notified_remote_version:
+                        await invia_messaggio(
+                            f"⚠️ <b>Nuova versione disponibile: {latest_remote}</b>\nVersione attuale: {version}",
+                            config.chat_id
+                        )
+                        last_notified_remote_version = latest_remote
+                except Exception as e:
+                    print(f"Errore controllo aggiornamenti in monitoraggio: {e}")
 
-    global dispositivi_in_manutenzione
-    dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
+                # Prossimo controllo tra 4 ore
+                next_update_check = datetime.now() + timedelta(hours=4)
 
-    # Determina la modalità manutenzione dal database
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Maintenence FROM monitor")
-    cursor.execute(query)
-    results = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+            # Controllo scadenza manutenzione temporanea
+            if manutenzione_programmata_scadenza and datetime.now() > manutenzione_programmata_scadenza:
+                print("Manutenzione temporanea scaduta. Disattivazione...")
+                await termina_manutenzione_logic()
+                manutenzione_programmata_scadenza = None
 
-    global modalita_manutenzione
-    modalita_manutenzione = all(result[0] for result in results)
+            if not modalita_manutenzione:
+                tutti_offline = True
 
-    # Aggiungi un dizionario globale per tenere traccia delle notifiche inviate
+                # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
+                # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
+                try:
+                    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+                    cursor = cnx.cursor()
+                    query = ("SELECT Nome, IP FROM monitor")
+                    cursor.execute(query)
+                    dispositivi = cursor.fetchall()
+                    cursor.close()
+                    cnx.close()
+                except mysql.connector.Error as err:
+                    print(f"Errore DB in monitoraggio: {err}")
+                    await asyncio.sleep(60)
+                    continue
 
-    async def monitoraggio():
-        global allarme_attivo
-        tutti_offline = False
-        stato_precedente_connessioni = {}
-        ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
-        tempo_notifica_dispositivo = 1800  # 30 minuti
+                for nome_dispositivo, indirizzo_ip in dispositivi:
+                    tentativi = 0
 
-        while True:
-            try:
-                if not modalita_manutenzione:
-                    tutti_offline = True
+                    while tentativi < 2:
+                        connessione_attuale = await controlla_connessione(indirizzo_ip)
+                        stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
 
-                    # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
-                    # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
-                    try:
-                        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-                        cursor = cnx.cursor()
-                        query = ("SELECT Nome, IP FROM monitor")
-                        cursor.execute(query)
-                        dispositivi = cursor.fetchall()
-                        cursor.close()
-                        cnx.close()
-                    except mysql.connector.Error as err:
-                        print(f"Errore DB in monitoraggio: {err}")
-                        await asyncio.sleep(60)
-                        continue
-
-                    for nome_dispositivo, indirizzo_ip in dispositivi:
-                        tentativi = 0
-
-                        while tentativi < 2:
-                            connessione_attuale = await controlla_connessione(indirizzo_ip)
-                            stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
-
-                            if connessione_attuale:
-                                if stato_precedente is False:  # Se prima era offline e ora è online
-                                    if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
-                                        await invia_messaggio(
-                                            f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
-                                            config.chat_id
-                                        )
-                                        scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
-                                    # Rimuovi la notifica di offline se era stata inviata
-                                    ultima_notifica.pop(indirizzo_ip, None)
-                                stato_precedente_connessioni[indirizzo_ip] = True
-                                tutti_offline = False
-                                break
-                            else:
-                                tentativi += 1
-                                await asyncio.sleep(30)
-
-                        if not connessione_attuale:
-                            # Controlla se il dispositivo era online prima
-                            if stato_precedente is not None and stato_precedente:  # Solo se era online prima
-                                # Controlla se la notifica è già stata inviata
-                                if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
-                                    print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                        if connessione_attuale:
+                            if stato_precedente is False:  # Se prima era offline e ora è online
+                                if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
                                     await invia_messaggio(
-                                        f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
+                                        f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
                                         config.chat_id
                                     )
-                                    # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
-                                    ultima_notifica[indirizzo_ip] = datetime.now()
-                                    # Scrivi il log solo se è la prima volta
-                                    if stato_precedente_connessioni.get(indirizzo_ip, True):
-                                        scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                        stato_precedente_connessioni[indirizzo_ip] = False
-                                else:
-                                    # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
-                                    pass
-                            stato_precedente_connessioni[indirizzo_ip] = False
+                                    scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
+                                # Rimuovi la notifica di offline se era stata inviata
+                                ultima_notifica.pop(indirizzo_ip, None)
+                            stato_precedente_connessioni[indirizzo_ip] = True
+                            tutti_offline = False
+                            break
+                        else:
+                            tentativi += 1
+                            await asyncio.sleep(30)
 
-                        # Questa logica era stata rimossa erroneamente. La ripristino ora.
-                        if not connessione_attuale and stato_precedente is False:
-                            # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
+                    if not connessione_attuale:
+                        # Controlla se il dispositivo era online prima
+                        if stato_precedente is not None and stato_precedente:  # Solo se era online prima
+                            # Controlla se la notifica è già stata inviata
                             if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
                                 print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                 await invia_messaggio(
@@ -1426,28 +1510,98 @@ def main():
                                 if stato_precedente_connessioni.get(indirizzo_ip, True):
                                     scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                                     stato_precedente_connessioni[indirizzo_ip] = False
+                            else:
+                                # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
+                                pass
+                        stato_precedente_connessioni[indirizzo_ip] = False
 
-                    if tutti_offline and not allarme_attivo:
-                        allarme_attivo = True
-                        print("Allarme attivo")
-                        await invia_messaggio("🚨 ATTENZIONE: Tutti i dispositivi sono OFFLINE! 🚨", config.chat_id)
-                    elif not tutti_offline and allarme_attivo:
-                        allarme_attivo = False
-                        print("Allarme disattivo")
-                        await invia_messaggio("✅ Allarme Rientrato: Rilevata connessione attiva.", config.chat_id)
+                    # Questa logica era stata rimossa erroneamente. La ripristino ora.
+                    if not connessione_attuale and stato_precedente is False:
+                        # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
+                        if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
+                            print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                            await invia_messaggio(
+                                f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
+                                config.chat_id
+                            )
+                            # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
+                            ultima_notifica[indirizzo_ip] = datetime.now()
+                            # Scrivi il log solo se è la prima volta
+                            if stato_precedente_connessioni.get(indirizzo_ip, True):
+                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                stato_precedente_connessioni[indirizzo_ip] = False
 
-                    await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
-                    await invia_file_testuale()
+                if tutti_offline and not allarme_attivo:
+                    allarme_attivo = True
+                    print("Allarme attivo")
+                    await invia_messaggio("🚨 ATTENZIONE: Tutti i dispositivi sono OFFLINE! 🚨", config.chat_id)
+                elif not tutti_offline and allarme_attivo:
+                    allarme_attivo = False
+                    print("Allarme disattivo")
+                    await invia_messaggio("✅ Allarme Rientrato: Rilevata connessione attiva.", config.chat_id)
 
-                else:
-                    await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
-                    await invia_file_testuale()
-            except Exception as e:
-                print(f"Errore nel loop di monitoraggio: {e}")
-                await asyncio.sleep(60)
+                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
 
-    async def avvio_monitoraggio():
-        await monitoraggio()
+                # Gestione cambio giorno e invio report
+                await invia_file_testuale()
+
+                # Gestione retry report in sospeso
+                if report_pending_date:
+                    print(f"Tentativo invio report in sospeso per {report_pending_date}...")
+                    if await invia_contenuto_file(report_pending_date, silent=True):
+                        print(f"Report in sospeso per {report_pending_date} inviato con successo.")
+                        report_pending_date = None
+                        save_pending_report(None)
+
+            else:
+                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+                await invia_file_testuale()
+
+                # Gestione retry report in sospeso anche in modalità manutenzione
+                if report_pending_date:
+                    if await invia_contenuto_file(report_pending_date, silent=True):
+                        report_pending_date = None
+                        save_pending_report(None)
+        except Exception as e:
+            print(f"Errore nel loop di monitoraggio: {e}")
+            await asyncio.sleep(60)
+
+async def avvio_monitoraggio():
+    await monitoraggio()
+
+def main():
+    global dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
+
+    scrivi_log("Avvio dello script")
+
+    application = ApplicationBuilder().token(config.bot_token).build()
+    
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("menu", mostra_menu))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|⏲️ Manutenzione Temporanea|🖥️ System Advance|⚙️ Gestione Dispositivo|☑️ Start)$"), button_handler))
+    
+    application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
+    application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
+    application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
+
+    dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
+
+    # Determina la modalità manutenzione dal database
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+    query = ("SELECT Maintenence FROM monitor")
+    cursor.execute(query)
+    results = cursor.fetchall()
+    cursor.close()
+    cnx.close()
+
+    modalita_manutenzione = all(result[0] for result in results)
+
+    # Carica report in sospeso all'avvio
+    report_pending_date = load_pending_report()
+    if report_pending_date:
+        print(f"Trovato report in sospeso per la data: {report_pending_date}")
 
     loop = asyncio.get_event_loop()
     loop.create_task(avvio_monitoraggio())

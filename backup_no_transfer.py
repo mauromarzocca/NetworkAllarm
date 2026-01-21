@@ -7,7 +7,7 @@ import asyncio  # Importiamo asyncio per gestire le coroutine
 
 # Import delle configurazioni e funzioni
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from main import invia_messaggio, scrivi_log
+from utils import invia_messaggio, scrivi_log
 
 # Configurazione
 project_name = "NetworkAllarm"

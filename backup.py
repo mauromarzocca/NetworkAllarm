@@ -6,14 +6,15 @@ import sys
 import asyncio
 
 # Importa le configurazioni dal progetto
+import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from main import invia_messaggio, scrivi_log
+from utils import invia_messaggio, scrivi_log
 
 # Configurazione base
-project_name = "NetworkAllarm"
-backup_dir_name = "Backup NetworkAllarm"
-remote_host = "user@IP_HOST"
-remote_path = "PATH/TO/BACKUP"
+project_name = config.PROJECT_NAME
+backup_dir_name = config.BACKUP_DIR_NAME
+remote_host = config.BACKUP_REMOTE_HOST
+remote_path = config.BACKUP_REMOTE_PATH
 
 # Percorsi
 script_dir = os.path.dirname(os.path.abspath(__file__))
