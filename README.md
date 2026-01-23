@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.0
+Versione : 10.0.1
 
 ![logo](/img/logo.png)
 
@@ -255,6 +255,9 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
 - **Refactoring:** `utils.py` separato e reso indipendente per evitare import circolari e dipendenze bloccanti.
 - **Configurazione:** `config.py` ora centralizza TUTTE le variabili, inclusi i path dinamici e le configurazioni di failover.
 - **Rimozioni:** Eliminati script obsoleti (`check_log.py`, `check_service.py`) ora integrati nel core o gestiti da systemd.
+
+- **Bug Fix:**
+  - Versione 10.0.1 : Ripristinata la Manutenzione per dispositivo
 
 ---
 
