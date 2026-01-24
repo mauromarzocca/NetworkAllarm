@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.0"
+version = "10.0.1"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -652,6 +652,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['azione'] = 'modifica_nome'
         context.user_data['nome_dispositivo'] = nome_dispositivo
         context.user_data['indirizzo_ip'] = indirizzo_ip
+    elif query.data == 'manutenzione_dispositivo':
+        await gestisci_manutenzione(update, context)
+    elif query.data == 'manutenzione':
+        await menu_manutenzione(update, context)
     # Gestione delle azioni di manutenzione
     elif query.data.startswith("manutenzione_"):
         parts = query.data.split("_")
@@ -734,7 +738,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def menu_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("✅ Attiva (ON)", callback_data='manutenzione_on_global'),
-         InlineKeyboardButton("❌ Disattiva (OFF)", callback_data='manutenzione_off_global')]
+         InlineKeyboardButton("❌ Disattiva (OFF)", callback_data='manutenzione_off_global')],
+        [InlineKeyboardButton("🔧 Manutenzione Dispositivo", callback_data='manutenzione_dispositivo')]
     ]
     await invia_messaggio("Gestione Manutenzione Globale:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -804,7 +809,7 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
         pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"manutenzione_{dispositivo[0]}_{dispositivo[1]}"))
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
-    await invia_messaggio("Dove vuoi gestire la manutenzione?", update.message.chat_id, reply_markup=keyboard)
+    await invia_messaggio("Dove vuoi gestire la manutenzione?", update.effective_chat.id, reply_markup=keyboard)
 
 async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
