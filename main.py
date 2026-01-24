@@ -1,6 +1,7 @@
 import subprocess
 import asyncio
 import os
+import sys
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -21,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.0.1"
+version = "10.0.2"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -149,8 +150,38 @@ def create_database_and_table():
 create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
-# Variabile per tracciare l'ultimo cambio giorno (inizializzata alla data corrente all'avvio)
-ultimo_cambio_giorno = datetime.now(pytz.timezone('Europe/Rome')).date()
+
+LAST_LOG_DATE_FILE = os.path.join(cartella_log_base, "last_daily_log_date.txt")
+
+def save_last_log_date(date_obj):
+    try:
+        os.makedirs(os.path.dirname(LAST_LOG_DATE_FILE), exist_ok=True)
+        with open(LAST_LOG_DATE_FILE, "w") as f:
+            f.write(date_obj.strftime('%Y-%m-%d'))
+    except Exception as e:
+        print(f"Errore salvataggio data ultimo log: {e}")
+
+def load_last_log_date():
+    try:
+        os.makedirs(os.path.dirname(LAST_LOG_DATE_FILE), exist_ok=True)
+        if not os.path.exists(LAST_LOG_DATE_FILE):
+            return None
+        with open(LAST_LOG_DATE_FILE, "r") as f:
+            content = f.read().strip()
+            return datetime.strptime(content, '%Y-%m-%d').date() if content else None
+    except Exception as e:
+        print(f"Errore caricamento data ultimo log: {e}")
+        return None
+
+# Variabile per tracciare l'ultimo cambio giorno (inizializzata da file o alla data corrente)
+saved_date = load_last_log_date()
+if saved_date:
+    ultimo_cambio_giorno = saved_date
+    print(f"Data ultimo log caricata da file: {ultimo_cambio_giorno}")
+else:
+    ultimo_cambio_giorno = datetime.now(pytz.timezone('Europe/Rome')).date()
+    save_last_log_date(ultimo_cambio_giorno)
+    print(f"Data ultimo log inizializzata a oggi: {ultimo_cambio_giorno}")
 # Variabile per la manutenzione temporanea
 manutenzione_programmata_scadenza = None
 
@@ -287,6 +318,7 @@ async def invia_file_testuale():
             save_pending_report(None)
 
         ultimo_cambio_giorno = data_corrente
+        save_last_log_date(ultimo_cambio_giorno)
 
 async def invia_contenuto_file(data_target=None, silent=False):
     """
@@ -1472,6 +1504,20 @@ async def monitoraggio():
                     cnx.close()
                 except mysql.connector.Error as err:
                     print(f"Errore DB in monitoraggio: {err}")
+
+                    # Log dell'errore
+                    messaggio_errore = f"Errore critico connessione DB: {err}"
+                    scrivi_log(messaggio_errore)
+
+                    # Notifica Telegram
+                    await invia_messaggio(f"⚠️ {messaggio_errore}", config.chat_id)
+
+                    # Se sistema a più nodi, stop del servizio per failover
+                    if len(config.NODE_ALIASES) > 1:
+                        print("Rilevato sistema a più nodi. Arresto del servizio per failover...")
+                        scrivi_log("Arresto servizio per failover su errore DB")
+                        sys.exit(1)
+
                     await asyncio.sleep(60)
                     continue
 
