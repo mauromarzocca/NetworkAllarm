@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.0.1
+Versione : 10.0.2
 
 ![logo](/img/logo.png)
 
@@ -257,7 +257,8 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
 - **Rimozioni:** Eliminati script obsoleti (`check_log.py`, `check_service.py`) ora integrati nel core o gestiti da systemd.
 
 - **Bug Fix:**
-  - Versione 10.0.1 : Ripristinata la Manutenzione per dispositivo
+  - Versione 10.0.1 : Ripristinata la Manutenzione per dispositivo.
+  - Versione 10.0.2 : Miglioramento nella gestione degli errori.
 
 ---
 
