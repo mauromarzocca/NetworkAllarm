@@ -7,6 +7,8 @@ import urllib.request
 import urllib.error
 import subprocess
 import json
+import re
+from datetime import datetime
 
 # Configuration defaults
 DEFAULT_BRANCH = "main"
@@ -44,7 +46,7 @@ def backup_file(filepath):
     if os.path.exists(filepath):
         timestamp = int(time.time())
         backup_path = f"{filepath}.{timestamp}.bak"
-        shutil.copy2(filepath, backup_path)
+        shutil.copy(filepath, backup_path)
         print(f"   [Backup] Created: {backup_path}")
         return backup_path
     return None
@@ -254,26 +256,151 @@ def update_from_github():
         except Exception as e:
             print(f"   [Error] Failed to fetch {filename}: {e}")
 
+def clean_backups():
+    """
+    Scans for backup files matching pattern *.timestamp.bak
+    Allows user to delete all or specific files.
+    """
+    print("\nScanning for backup files...")
+
+    # Pattern regex: filename.timestamp.bak
+    # Timestamp is digits
+    pattern = re.compile(r"^(.+)\.(\d+)\.bak$")
+
+    backup_files = []
+
+    # Scan current directory
+    for f in os.listdir("."):
+        if os.path.isfile(f):
+            match = pattern.match(f)
+            if match:
+                original_name = match.group(1)
+                timestamp_str = match.group(2)
+                try:
+                    ts = int(timestamp_str)
+                    date_str = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    date_str = "Invalid Timestamp"
+
+                backup_files.append({
+                    "filename": f,
+                    "original": original_name,
+                    "date": date_str,
+                    "timestamp": ts
+                })
+
+    if not backup_files:
+        print("No backup files found.")
+        input("\nPress Enter to continue...")
+        return
+
+    # Sort by timestamp descending (newest first)
+    backup_files.sort(key=lambda x: x["timestamp"], reverse=True)
+
+    while True:
+        clear_screen()
+        print_header()
+        print("   Clean Backup Files")
+        print("==========================================")
+        print(f"{'No.':<4} {'File Name':<30} {'Backup Date'}")
+        print("-" * 60)
+
+        for idx, item in enumerate(backup_files):
+            print(f"{idx + 1:<4} {item['filename']:<30} {item['date']}")
+
+        print("-" * 60)
+        print("Options:")
+        print("  ALL   - Delete ALL backup files")
+        print("  1 3 5 - Delete specific files (space separated)")
+        print("  0     - Cancel / Return")
+
+        choice = input("\nEnter choice: ").strip()
+
+        if choice == '0':
+            return
+
+        if choice.upper() == 'ALL':
+            confirm = input(f"Are you sure you want to delete ALL {len(backup_files)} backup files? (y/n): ")
+            if confirm.lower() == 'y':
+                for item in backup_files:
+                    try:
+                        os.remove(item['filename'])
+                        print(f"Deleted: {item['filename']}")
+                    except OSError as e:
+                        print(f"Error deleting {item['filename']}: {e}")
+                input("\nDeletion complete. Press Enter to continue...")
+                return
+        else:
+            # Try parsing numbers
+            try:
+                parts = choice.split()
+                indices = [int(p) - 1 for p in parts]
+
+                # Validate indices
+                to_delete = []
+                for idx in indices:
+                    if 0 <= idx < len(backup_files):
+                        to_delete.append(backup_files[idx])
+
+                if not to_delete:
+                    print("No valid files selected.")
+                    time.sleep(1)
+                    continue
+
+                print(f"\nYou selected {len(to_delete)} files to delete.")
+                confirm = input("Confirm deletion? (y/n): ")
+                if confirm.lower() == 'y':
+                    for item in to_delete:
+                        try:
+                            os.remove(item['filename'])
+                            print(f"Deleted: {item['filename']}")
+                            # Remove from local list so loop updates
+                        except OSError as e:
+                            print(f"Error deleting {item['filename']}: {e}")
+
+                    # Remove deleted items from the list to refresh view
+                    # Using list comprehension to filter out deleted ones
+                    deleted_names = [x['filename'] for x in to_delete]
+                    backup_files = [x for x in backup_files if x['filename'] not in deleted_names]
+
+                    if not backup_files:
+                        print("\nAll backups deleted.")
+                        input("Press Enter to continue...")
+                        return
+
+                    input("\nDeletion complete. Press Enter to continue...")
+            except ValueError:
+                print("Invalid input. Use numbers separated by space or 'ALL'.")
+                time.sleep(1)
+
 def main():
-    clear_screen()
-    print_header()
-    print("1. Manual Update (Edit File)")
-    print("2. Update from GitHub")
-    print("0. Exit")
+    # Ensure we are working in the script's directory
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-    try:
-        choice = input("\nSelect option: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        sys.exit()
+    while True:
+        clear_screen()
+        print_header()
+        print("1. Manual Update (Edit File)")
+        print("2. Update from GitHub")
+        print("3. Clean Backup Files")
+        print("0. Exit")
 
-    if choice == '1':
-        manual_update_editor()
-    elif choice == '2':
-        update_from_github()
-    elif choice == '0':
-        sys.exit()
-    else:
-        print("Invalid option.")
+        try:
+            choice = input("\nSelect option: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            sys.exit()
+
+        if choice == '1':
+            manual_update_editor()
+        elif choice == '2':
+            update_from_github()
+        elif choice == '3':
+            clean_backups()
+        elif choice == '0':
+            sys.exit()
+        else:
+            print("Invalid option.")
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()
