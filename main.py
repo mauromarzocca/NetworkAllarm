@@ -542,7 +542,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         version_msg = f"Versione: <b>{version}</b>"
         if latest_version:
             if is_new:
-                version_msg += f"\n⚠️ <b>Nuova versione disponibile: {latest_version}</b>"
+                version_msg += f"\n⚠️ Nuova versione disponibile: {latest_version}"
             else:
                 version_msg += " (Aggiornato)"
 
