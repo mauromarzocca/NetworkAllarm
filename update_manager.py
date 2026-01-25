@@ -142,6 +142,40 @@ def merge_config(local_path, remote_content):
     else:
         print("   [Config] No new items found to merge.")
 
+def is_service_active():
+    """Checks if NetworkAllarm.service is active."""
+    try:
+        subprocess.check_call(["systemctl", "is-active", "--quiet", "NetworkAllarm.service"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def restart_service():
+    """
+    Creates a flag file 'stato/.post_update' and restarts the service.
+    """
+    print("\n   [Service] Restarting NetworkAllarm service...")
+
+    # Create flag file
+    flag_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato")
+    flag_file = os.path.join(flag_dir, ".post_update")
+
+    try:
+        os.makedirs(flag_dir, exist_ok=True)
+        with open(flag_file, "w") as f:
+            f.write("restart_pending")
+        print(f"   [Service] Created flag: {flag_file}")
+    except Exception as e:
+        print(f"   [Error] Could not create flag file: {e}")
+
+    # Restart service
+    try:
+        # Using sudo is expected here as services require privileges
+        subprocess.call(["sudo", "systemctl", "restart", "NetworkAllarm.service"])
+        print("   [Service] Restart command issued.")
+    except Exception as e:
+        print(f"   [Error] Failed to restart service: {e}")
+
 def manual_update_editor():
     """
     Lists files in current directory.
@@ -188,6 +222,13 @@ def manual_update_editor():
                 print(f"   [Update] Editing complete for {filename}")
             except FileNotFoundError:
                 print("   [Error] 'vi' not found. Please edit the file manually.")
+
+            # Ask for restart if service is active
+            if is_service_active():
+                print("\n   [Service] NetworkAllarm service is currently active.")
+                if input("   Restart service now to apply changes? (y/n): ").strip().lower() == 'y':
+                    restart_service()
+
         else:
             print("Invalid choice.")
     except ValueError:
@@ -255,6 +296,12 @@ def update_from_github():
             print(f"   [Skip] File not found or error (Status {e.code})")
         except Exception as e:
             print(f"   [Error] Failed to fetch {filename}: {e}")
+
+    # Ask for restart if service is active
+    if is_service_active():
+        print("\n   [Service] NetworkAllarm service is currently active.")
+        if input("   Restart service now to apply changes? (y/n): ").strip().lower() == 'y':
+            restart_service()
 
 def clean_backups():
     """
@@ -383,6 +430,7 @@ def main():
         print("1. Manual Update (Edit File)")
         print("2. Update from GitHub")
         print("3. Clean Backup Files")
+        print("4. Restart Service")
         print("0. Exit")
 
         try:
@@ -396,6 +444,10 @@ def main():
             update_from_github()
         elif choice == '3':
             clean_backups()
+        elif choice == '4':
+            if input("\nAre you sure you want to restart the service? (y/n): ").strip().lower() == 'y':
+                restart_service()
+                input("\nPress Enter to continue...")
         elif choice == '0':
             sys.exit()
         else:
