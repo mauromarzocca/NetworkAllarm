@@ -142,10 +142,37 @@ def merge_config(local_path, remote_content):
     else:
         print("   [Config] No new items found to merge.")
 
+def get_service_name():
+    """
+    Detects the installed service name (case-insensitive check).
+    Returns 'NetworkAllarm.service' or 'networkallarm.service'.
+    """
+    candidates = ["NetworkAllarm.service", "networkallarm.service"]
+
+    # 1. Check for active service
+    for name in candidates:
+        try:
+            if subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0:
+                return name
+        except FileNotFoundError:
+            return candidates[0] # systemctl not found
+
+    # 2. Check for existence (loaded)
+    for name in candidates:
+        try:
+            output = subprocess.check_output(["systemctl", "show", "-p", "LoadState", name], text=True)
+            if "LoadState=loaded" in output:
+                return name
+        except Exception:
+            pass
+
+    return candidates[0] # Default
+
 def is_service_active():
-    """Checks if NetworkAllarm.service is active."""
+    """Checks if the service is active."""
+    service_name = get_service_name()
     try:
-        subprocess.check_call(["systemctl", "is-active", "--quiet", "NetworkAllarm.service"])
+        subprocess.check_call(["systemctl", "is-active", "--quiet", service_name])
         return True
     except subprocess.CalledProcessError:
         return False
@@ -154,7 +181,8 @@ def restart_service():
     """
     Creates a flag file 'stato/.post_update' and restarts the service.
     """
-    print("\n   [Service] Restarting NetworkAllarm service...")
+    service_name = get_service_name()
+    print(f"\n   [Service] Restarting {service_name}...")
 
     # Create flag file
     flag_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato")
@@ -171,7 +199,7 @@ def restart_service():
     # Restart service
     try:
         # Using sudo is expected here as services require privileges
-        subprocess.call(["sudo", "systemctl", "restart", "NetworkAllarm.service"])
+        subprocess.call(["sudo", "systemctl", "restart", service_name])
         print("   [Service] Restart command issued.")
     except Exception as e:
         print(f"   [Error] Failed to restart service: {e}")
@@ -225,7 +253,7 @@ def manual_update_editor():
 
             # Ask for restart if service is active
             if is_service_active():
-                print("\n   [Service] NetworkAllarm service is currently active.")
+                print(f"\n   [Service] {get_service_name()} is currently active.")
                 if input("   Restart service now to apply changes? (y/n): ").strip().lower() == 'y':
                     restart_service()
 
@@ -299,7 +327,7 @@ def update_from_github():
 
     # Ask for restart if service is active
     if is_service_active():
-        print("\n   [Service] NetworkAllarm service is currently active.")
+        print(f"\n   [Service] {get_service_name()} is currently active.")
         if input("   Restart service now to apply changes? (y/n): ").strip().lower() == 'y':
             restart_service()
 
