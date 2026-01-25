@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.0.2
+Versione : 10.0.3
 
 ![logo](/img/logo.png)
 
@@ -259,6 +259,7 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
 - **Bug Fix:**
   - Versione 10.0.1 : Ripristinata la Manutenzione per dispositivo.
   - Versione 10.0.2 : Miglioramento nella gestione degli errori.
+  - Versione 10.0.3 : Miglioramento di [Update_Manager](./update_manager.py)
 
 ---
 

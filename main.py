@@ -11,7 +11,7 @@ from config import cartella_log_base, credenziali
 import mysql.connector
 from config import DB_USER, DB_PASSWORD
 import socket
-from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release
+from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release, invia_messaggio_sync
 import ipaddress
 import paramiko
 import re
@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.0.2"
+version = "10.0.3"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -542,7 +542,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         version_msg = f"Versione: <b>{version}</b>"
         if latest_version:
             if is_new:
-                version_msg += f"\n⚠️ <b>Nuova versione disponibile: {latest_version}</b>"
+                version_msg += f"\n⚠️ Nuova versione disponibile: {latest_version}"
             else:
                 version_msg += " (Aggiornato)"
 
@@ -1623,7 +1623,18 @@ async def avvio_monitoraggio():
 def main():
     global dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
 
-    scrivi_log("Avvio dello script")
+    flag_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", ".post_update")
+    if os.path.exists(flag_path):
+        nodo = get_nodo_corrente()
+        msg = f"Aggiornamento su Nodo {nodo}"
+        scrivi_log(msg)
+        invia_messaggio_sync(msg, config.chat_id)
+        try:
+            os.remove(flag_path)
+        except Exception as e:
+            print(f"Errore rimozione flag update: {e}")
+    else:
+        scrivi_log("Avvio dello script")
 
     application = ApplicationBuilder().token(config.bot_token).build()
     
