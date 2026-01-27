@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.0.3"
+version = "10.0.4"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
