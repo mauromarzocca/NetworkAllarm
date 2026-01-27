@@ -318,9 +318,14 @@ WantedBy=multi-user.target
 
         write_service("NetworkAllarm.service", na_service)
 
-        services_to_enable = ["NetworkAllarm.service"]
+        services_to_enable = []
 
-        if conf['multi_node'] and conf['is_secondary']:
+        # Se NON è un nodo secondario, abilita NetworkAllarm all'avvio.
+        # Sul nodo secondario, sarà failover-monitor a gestirlo.
+        if not (conf.get('multi_node') and conf.get('is_secondary')):
+            services_to_enable.append("NetworkAllarm.service")
+
+        if conf.get('multi_node') and conf.get('is_secondary'):
             print("Configurazione nodo secondario: Creo Failover Monitor Service.")
             write_service("failover-monitor.service", fm_service)
             services_to_enable.append("failover-monitor.service")

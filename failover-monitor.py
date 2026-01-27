@@ -61,6 +61,9 @@ def manage_service():
 
 if __name__ == "__main__":
     log("Avvio failover monitor (modalità sistema)")
+    # Attesa iniziale per permettere alla rete di stabilizzarsi al boot
+    time.sleep(10)
+
     while True:
         try:
             manage_service()

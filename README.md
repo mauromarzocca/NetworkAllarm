@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.0.3
+Versione : 10.0.4
 
 ![logo](/img/logo.png)
 
@@ -260,6 +260,7 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - Versione 10.0.1 : Ripristinata la Manutenzione per dispositivo.
   - Versione 10.0.2 : Miglioramento nella gestione degli errori.
   - Versione 10.0.3 : Miglioramento di [Update_Manager](./update_manager.py)
+  - Versione 10.0.4 : Miglioramento nella gestione del nodo secondario.
 
 ---
 
