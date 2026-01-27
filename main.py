@@ -1473,7 +1473,7 @@ async def monitoraggio():
                     )
                     if is_new and latest_remote != last_notified_remote_version:
                         await invia_messaggio(
-                            f"⚠️ <b>Nuova versione disponibile: {latest_remote}</b>\nVersione attuale: {version}",
+                            f"⚠️ Nuova versione disponibile: {latest_remote}\nVersione attuale: {version}",
                             config.chat_id
                         )
                         last_notified_remote_version = latest_remote
