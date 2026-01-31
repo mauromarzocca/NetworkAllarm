@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.0.4"
+version = "10.0.5"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -884,12 +884,8 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio)
 
 async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     await invia_log_corrente(chat_id)
-
-async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
-    context.user_data['azione'] = 'aggiungi_dispositivo_nome'
 
 async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
@@ -1383,7 +1379,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
     return status
 
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     await invia_messaggio("Quale dispositivo vuoi rimuovere?", chat_id)
 
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -1420,7 +1416,7 @@ async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
     #await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", config.chat_id)
 
 async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     await invia_messaggio("Quale dispositivo vuoi modificare?", chat_id)
 
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
