@@ -184,25 +184,57 @@ else:
     print(f"Data ultimo log inizializzata a oggi: {ultimo_cambio_giorno}")
 # Variabile per la manutenzione temporanea
 manutenzione_programmata_scadenza = None
+dispositivi_manutenzione_scadenza = {} # { "IP": datetime }
+MAINTENANCE_DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "maintenance_data.json")
+
+def save_maintenance_data(global_expiry=None, individual_expiries=None, clear_global=False, global_manual=None):
+    try:
+        os.makedirs(os.path.dirname(MAINTENANCE_DATA_FILE), exist_ok=True)
+
+        # Carica dati esistenti per non perderli
+        current_data = {}
+        if os.path.exists(MAINTENANCE_DATA_FILE):
+            with open(MAINTENANCE_DATA_FILE, "r") as f:
+                current_data = json.load(f)
+
+        if clear_global:
+            current_data["global_expiry"] = None
+            current_data["global_manual"] = False
+        else:
+            if global_expiry is not None:
+                current_data["global_expiry"] = global_expiry.isoformat()
+            if global_manual is not None:
+                current_data["global_manual"] = global_manual
+
+        if individual_expiries is not None:
+            # Converti datetime in stringhe per JSON
+            current_data["individual_expiries"] = {k: v.isoformat() if v else None for k, v in individual_expiries.items()}
+
+        with open(MAINTENANCE_DATA_FILE, "w") as f:
+            json.dump(current_data, f)
+    except Exception as e:
+        print(f"Errore salvataggio dati manutenzione: {e}")
+
+def load_maintenance_data():
+    try:
+        if not os.path.exists(MAINTENANCE_DATA_FILE):
+            return None, {}, False
+        with open(MAINTENANCE_DATA_FILE, "r") as f:
+            data = json.load(f)
+            expiry_str = data.get("global_expiry")
+            global_expiry = datetime.fromisoformat(expiry_str) if expiry_str else None
+            global_manual = data.get("global_manual", False)
+
+            individual_expiries_raw = data.get("individual_expiries", {})
+            individual_expiries = {k: datetime.fromisoformat(v) if v else None for k, v in individual_expiries_raw.items()}
+
+            return global_expiry, individual_expiries, global_manual
+    except Exception as e:
+        print(f"Errore caricamento dati manutenzione: {e}")
+        return None, {}, False
 
 # Variabili globali aggiunte
-dispositivi_in_manutenzione = set()
 modalita_manutenzione = False
-
-def recupera_dispositivi_in_manutenzione():
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
-    query = ("SELECT Nome, IP FROM monitor WHERE Maintenence = TRUE")
-    cursor.execute(query)
-    result = cursor.fetchall()
-
-    dispositivi_in_manutenzione = set((nome, indirizzo) for nome, indirizzo in result)
-
-    cursor.close()
-    cnx.close()
-
-    return dispositivi_in_manutenzione
 
 def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -465,63 +497,40 @@ def get_db_connection():
     return cnx
 
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global modalita_manutenzione, dispositivi_in_manutenzione
+    global modalita_manutenzione
 
     if not modalita_manutenzione:
         modalita_manutenzione = True
-        scrivi_log("Inizio manutenzione")
-        await invia_messaggio("Inizio manutenzione", config.chat_id)
-
-        # Creare la connessione al database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-
-        # Controllare se la connessione è ancora disponibile
-        if cnx.is_connected():
-            cursor = cnx.cursor()
-
-            # Aggiorna il valore di Maintenence nel database
-            query = ("UPDATE monitor SET Maintenence = TRUE")
-            cursor.execute(query)
-            cnx.commit()
-
-            # Recupera tutti i dispositivi dal database e aggiungili alla lista di quelli in manutenzione
-            query = ("SELECT Nome, IP FROM monitor")
-            cursor.execute(query)
-            dispositivi = cursor.fetchall()
-            dispositivi_in_manutenzione.update((nome, indirizzo) for nome, indirizzo in dispositivi)
-
-            cursor.close()
-            cnx.close()
-        else:
-            scrivi_log("Errore: connessione al database non disponibile")
-            await invia_messaggio("Errore: connessione al database non disponibile", config.chat_id)
+        save_maintenance_data(global_manual=True)
+        scrivi_log("Inizio manutenzione globale")
+        await invia_messaggio("Inizio manutenzione globale", config.chat_id)
 
 async def termina_manutenzione_logic():
-    global modalita_manutenzione, dispositivi_in_manutenzione, allarme_attivo
+    global modalita_manutenzione, allarme_attivo
     
     if modalita_manutenzione:
         allarme_attivo = False
         modalita_manutenzione = False
-        scrivi_log("Fine manutenzione")
-        await invia_messaggio("✅ Fine manutenzione", config.chat_id)
-        
-        # Rimuovi tutti i dispositivi dalla lista di quelli in manutenzione
-        dispositivi_in_manutenzione.clear()
-        
-        # Aggiorna il valore di Maintenence nel database
-        try:
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("UPDATE monitor SET Maintenence = FALSE")
-            cursor.execute(query)
-            cnx.commit()
-            cursor.close()
-            cnx.close()
-        except Exception as e:
-            print(f"Errore durante aggiornamento DB in termina_manutenzione: {e}")
+        scrivi_log("Fine manutenzione globale")
+        await invia_messaggio("✅ Fine manutenzione globale", config.chat_id)
 
 async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await termina_manutenzione_logic()
+
+async def manutenzione_silent_off(nome_dispositivo, indirizzo_ip):
+    # Versione silenziosa di manutenzione per scadenza temporanea
+    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+    cursor = cnx.cursor()
+
+    messaggio = f"Manutenzione Temporanea Scaduta su {nome_dispositivo} - {indirizzo_ip}"
+    await invia_messaggio(messaggio, config.chat_id)
+    scrivi_log(messaggio)
+
+    query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
+    cursor.execute(query, (indirizzo_ip,))
+    cnx.commit()
+    cursor.close()
+    cnx.close()
 
 def utente_autorizzato(user_id):
     return user_id in config.autorizzati
@@ -633,12 +642,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'manutenzione_off_global':
         if modalita_manutenzione:
             manutenzione_programmata_scadenza = None # Resetta timer se presente
+            save_maintenance_data(clear_global=True)
             await termina_manutenzione(update, context)
         else:
             await invia_messaggio("La manutenzione non è attiva.", chat_id)
     elif query.data.startswith('manutenzione_temp_'):
         minuti = int(query.data.split('_')[2])
         manutenzione_programmata_scadenza = datetime.now() + timedelta(minutes=minuti)
+        save_maintenance_data(global_expiry=manutenzione_programmata_scadenza, global_manual=False)
         await invia_messaggio(f"Manutenzione temporanea attivata per {minuti} minuti.", chat_id)
         if not modalita_manutenzione:
             await avvia_manutenzione(update, context)
@@ -697,10 +708,36 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [
                 [InlineKeyboardButton("Manutenzione ON", callback_data=f"manutenzione_on_{nome_dispositivo}_{indirizzo_ip}"),
                  InlineKeyboardButton("Manutenzione OFF", callback_data=f"manutenzione_off_{nome_dispositivo}_{indirizzo_ip}")],
+                [InlineKeyboardButton("Manutenzione Temporanea", callback_data=f"manutenzione_temp_disp_{nome_dispositivo}_{indirizzo_ip}")]
             ]
-            await invia_messaggio("Seleziona l'azione da eseguire:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
+            await invia_messaggio(f"Gestione manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
+        elif len(parts) == 5 and parts[1] == "temp" and parts[2] == "disp":
+            # Menu manutenzione temporanea dispositivo
+            _, _, _, nome_dispositivo, indirizzo_ip = parts
+            keyboard = [
+                [InlineKeyboardButton("30 Minuti", callback_data=f"manut_temp_val_30_{nome_dispositivo}_{indirizzo_ip}"),
+                 InlineKeyboardButton("1 Ora", callback_data=f"manut_temp_val_60_{nome_dispositivo}_{indirizzo_ip}"),
+                 InlineKeyboardButton("2 Ore", callback_data=f"manut_temp_val_120_{nome_dispositivo}_{indirizzo_ip}")]
+            ]
+            await invia_messaggio(f"Durata manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
+        elif query.data.startswith("manut_temp_val_"):
+            # Imposta manutenzione temporanea dispositivo
+            parts = query.data.split("_")
+            minuti = int(parts[3])
+            nome_dispositivo = parts[4]
+            indirizzo_ip = parts[5]
+
+            scadenza = datetime.now() + timedelta(minutes=minuti)
+            dispositivi_manutenzione_scadenza[indirizzo_ip] = scadenza
+            save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
+
+            await manutenzione(update, context, "on", nome_dispositivo, indirizzo_ip)
+            await invia_messaggio(f"Manutenzione temporanea per {nome_dispositivo} attivata per {minuti} minuti.", chat_id)
         elif len(parts) == 4:
             action, nome_dispositivo, indirizzo_ip = parts[1:]
+            if action == "off":
+                dispositivi_manutenzione_scadenza.pop(indirizzo_ip, None)
+                save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
             await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
 
     # Gestione della conferma di aggiunta
@@ -719,10 +756,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cnx.commit()
             cursor.close()
             cnx.close()
-
-            # Aggiorna la variabile globale dispositivi_in_manutenzione
-            global dispositivi_in_manutenzione
-            dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))
 
             scrivi_log(f"Dispositivo aggiunto in manutenzione: {nome_dispositivo} - {indirizzo_ip}")
 
@@ -792,8 +825,6 @@ async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAUL
     await invia_messaggio("Gestione Dispositivo:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
-    global dispositivi_in_manutenzione
-    
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
 
@@ -803,7 +834,6 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
         await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
         await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
         scrivi_log(messaggio)
-        dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))  # Rimuovi il dispositivo dalla lista di quelli in manutenzione
 
         # Aggiorna il valore di Maintenence nel database
         query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
@@ -816,7 +846,6 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
         await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
         await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
         scrivi_log(messaggio)
-        dispositivi_in_manutenzione.add((nome_dispositivo, indirizzo_ip))  # Aggiungi il dispositivo alla lista di quelli in manutenzione
 
         # Aggiorna il valore di Maintenence nel database
         query = ("UPDATE monitor SET Maintenence = TRUE WHERE IP = %s")
@@ -861,6 +890,7 @@ async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     await invia_messaggio("Seleziona il dispositivo per informazioni avanzate:", chat_id, reply_markup=keyboard)
 
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global modalita_manutenzione
     stati_connessioni = []
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
@@ -871,9 +901,18 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     cursor.close()
     cnx.close()
 
+    if modalita_manutenzione:
+        stati_connessioni.append("🔧 **Modalità Manutenzione Globale Attiva**\n")
+
     for nome_dispositivo, indirizzo_ip, stato_manutenzione in dispositivi:
-        if stato_manutenzione:
-            stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : Manutenzione")
+        if modalita_manutenzione or stato_manutenzione:
+            stato_desc = "Manutenzione"
+            if modalita_manutenzione and stato_manutenzione:
+                stato_desc = "Manutenzione (Globale + Singola)"
+            elif modalita_manutenzione:
+                stato_desc = "Manutenzione (Globale)"
+
+            stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato_desc}")
         else:
             print(f"Verifica connessione per {nome_dispositivo} ({indirizzo_ip})")
             # Usa await qui perché controlla_connessione è ora asincrona
@@ -1398,7 +1437,6 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
     await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
 
 async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
-    global dispositivi_in_manutenzione
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
 
@@ -1408,9 +1446,6 @@ async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
 
     cursor.close()
     cnx.close()
-
-    # Rimuovi il dispositivo dalla lista di quelli in manutenzione
-    dispositivi_in_manutenzione.discard((nome_dispositivo, indirizzo_ip))
 
     scrivi_log(f"Rimosso Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
     #await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", config.chat_id)
@@ -1449,7 +1484,7 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
 async def monitoraggio():
-    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
+    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date
     tutti_offline = False
     stato_precedente_connessioni = {}
     ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
@@ -1479,21 +1514,49 @@ async def monitoraggio():
                 # Prossimo controllo tra 4 ore
                 next_update_check = datetime.now() + timedelta(hours=4)
 
-            # Controllo scadenza manutenzione temporanea
+            # Controllo scadenza manutenzione temporanea globale
             if manutenzione_programmata_scadenza and datetime.now() > manutenzione_programmata_scadenza:
-                print("Manutenzione temporanea scaduta. Disattivazione...")
+                print("Manutenzione temporanea globale scaduta. Disattivazione...")
                 await termina_manutenzione_logic()
                 manutenzione_programmata_scadenza = None
+                save_maintenance_data(clear_global=True)
+
+            # Controllo scadenza manutenzione temporanea dispositivi
+            expired_ips = [ip for ip, scadenza in dispositivi_manutenzione_scadenza.items() if datetime.now() > scadenza]
+            for ip in expired_ips:
+                print(f"Manutenzione temporanea scaduta per {ip}. Disattivazione...")
+                # Per terminare la manutenzione, dobbiamo recuperare nome dal database
+                try:
+                    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+                    cursor = cnx.cursor()
+                    query = ("SELECT Nome FROM monitor WHERE IP = %s")
+                    cursor.execute(query, (ip,))
+                    res = cursor.fetchone()
+                    if res:
+                        nome = res[0]
+                        # Chiamiamo manutenzione_silent_off
+                        asyncio.create_task(manutenzione_silent_off(nome, ip))
+
+                    cursor.close()
+                    cnx.close()
+                except Exception as e:
+                    print(f"Errore reset manutenzione singola scaduta: {e}")
+
+                dispositivi_manutenzione_scadenza.pop(ip)
+
+            if expired_ips:
+                save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
 
             if not modalita_manutenzione:
                 tutti_offline = True
+                dispositivi_monitorati = 0
 
                 # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
                 # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
                 try:
                     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
                     cursor = cnx.cursor()
-                    query = ("SELECT Nome, IP FROM monitor")
+                    query = ("SELECT Nome, IP, Maintenence FROM monitor")
                     cursor.execute(query)
                     dispositivi = cursor.fetchall()
                     cursor.close()
@@ -1517,7 +1580,13 @@ async def monitoraggio():
                     await asyncio.sleep(60)
                     continue
 
-                for nome_dispositivo, indirizzo_ip in dispositivi:
+                for nome_dispositivo, indirizzo_ip, in_manutenzione_singola in dispositivi:
+                    if in_manutenzione_singola:
+                        # Se il dispositivo è in manutenzione singola, lo saltiamo nel monitoraggio offline
+                        # ma non azzeriamo tutti_offline basandoci su di lui.
+                        continue
+
+                    dispositivi_monitorati += 1
                     tentativi = 0
 
                     while tentativi < 2:
@@ -1526,12 +1595,11 @@ async def monitoraggio():
 
                         if connessione_attuale:
                             if stato_precedente is False:  # Se prima era offline e ora è online
-                                if (nome_dispositivo, indirizzo_ip) not in dispositivi_in_manutenzione:
-                                    await invia_messaggio(
-                                        f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
-                                        config.chat_id
-                                    )
-                                    scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
+                                await invia_messaggio(
+                                    f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
+                                    config.chat_id
+                                )
+                                scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
                                 # Rimuovi la notifica di offline se era stata inviata
                                 ultima_notifica.pop(indirizzo_ip, None)
                             stato_precedente_connessioni[indirizzo_ip] = True
@@ -1578,6 +1646,10 @@ async def monitoraggio():
                                 scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
                                 stato_precedente_connessioni[indirizzo_ip] = False
 
+                # Se non ci sono dispositivi monitorati (tutti in manutenzione), non attiviamo l'allarme "Tutti Offline"
+                if dispositivi_monitorati == 0:
+                    tutti_offline = False
+
                 if tutti_offline and not allarme_attivo:
                     allarme_attivo = True
                     print("Allarme attivo")
@@ -1601,6 +1673,36 @@ async def monitoraggio():
                         save_pending_report(None)
 
             else:
+                # Controllo scadenza manutenzione temporanea anche quando modalita_manutenzione è True
+                # Globale
+                if manutenzione_programmata_scadenza and datetime.now() > manutenzione_programmata_scadenza:
+                    print("Manutenzione temporanea globale scaduta. Disattivazione...")
+                    await termina_manutenzione_logic()
+                    manutenzione_programmata_scadenza = None
+                    save_maintenance_data(clear_global=True)
+
+                # Individuale
+                expired_ips = [ip for ip, scadenza in dispositivi_manutenzione_scadenza.items() if datetime.now() > scadenza]
+                for ip in expired_ips:
+                    print(f"Manutenzione temporanea scaduta per {ip} (mentre globale ON). Disattivazione...")
+                    try:
+                        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+                        cursor = cnx.cursor()
+                        query = ("SELECT Nome FROM monitor WHERE IP = %s")
+                        cursor.execute(query, (ip,))
+                        res = cursor.fetchone()
+                        if res:
+                            nome = res[0]
+                            asyncio.create_task(manutenzione_silent_off(nome, ip))
+                        cursor.close()
+                        cnx.close()
+                    except Exception as e:
+                        print(f"Errore reset manutenzione singola scaduta: {e}")
+                    dispositivi_manutenzione_scadenza.pop(ip)
+
+                if expired_ips:
+                    save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
+
                 await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
                 await invia_file_testuale()
 
@@ -1617,7 +1719,7 @@ async def avvio_monitoraggio():
     await monitoraggio()
 
 def main():
-    global dispositivi_in_manutenzione, modalita_manutenzione, report_pending_date
+    global modalita_manutenzione, report_pending_date
 
     flag_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", ".post_update")
     if os.path.exists(flag_path):
@@ -1643,18 +1745,41 @@ def main():
     application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
     application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
 
-    dispositivi_in_manutenzione = recupera_dispositivi_in_manutenzione()
+    # Carica dati manutenzione all'avvio
+    manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, global_manual = load_maintenance_data()
 
-    # Determina la modalità manutenzione dal database
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Maintenence FROM monitor")
-    cursor.execute(query)
-    results = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+    # Check globale
+    if manutenzione_programmata_scadenza:
+        print(f"Manutenzione temporanea globale caricata. Scadenza: {manutenzione_programmata_scadenza}")
+        if datetime.now() > manutenzione_programmata_scadenza:
+            print("Scadenza globale già passata. Resetto flag...")
+            manutenzione_programmata_scadenza = None
+            save_maintenance_data(clear_global=True)
+            modalita_manutenzione = False
+        else:
+            modalita_manutenzione = True
+    elif global_manual:
+        print("Manutenzione manuale globale attiva caricata.")
+        modalita_manutenzione = True
 
-    modalita_manutenzione = all(result[0] for result in results)
+    # Check individuali
+    expired_ips = [ip for ip, scadenza in dispositivi_manutenzione_scadenza.items() if datetime.now() > scadenza]
+    for ip in expired_ips:
+        print(f"Scadenza individuale già passata per {ip}. Resetto DB...")
+        try:
+            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
+            cursor = cnx.cursor()
+            query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
+            cursor.execute(query, (ip,))
+            cnx.commit()
+            cursor.close()
+            cnx.close()
+        except Exception as e:
+            print(f"Errore reset DB all'avvio per {ip}: {e}")
+        dispositivi_manutenzione_scadenza.pop(ip)
+
+    if expired_ips:
+        save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
 
     # Carica report in sospeso all'avvio
     report_pending_date = load_pending_report()
