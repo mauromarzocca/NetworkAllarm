@@ -646,7 +646,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await termina_manutenzione(update, context)
         else:
             await invia_messaggio("La manutenzione non è attiva.", chat_id)
-    elif query.data.startswith('manutenzione_temp_'):
+    elif query.data.startswith('manutenzione_temp_') and not query.data.startswith('manutenzione_temp_disp_'):
         minuti = int(query.data.split('_')[2])
         manutenzione_programmata_scadenza = datetime.now() + timedelta(minutes=minuti)
         save_maintenance_data(global_expiry=manutenzione_programmata_scadenza, global_manual=False)
@@ -720,19 +720,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("2 Ore", callback_data=f"manut_temp_val_120_{nome_dispositivo}_{indirizzo_ip}")]
             ]
             await invia_messaggio(f"Durata manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
-        elif query.data.startswith("manut_temp_val_"):
-            # Imposta manutenzione temporanea dispositivo
-            parts = query.data.split("_")
-            minuti = int(parts[3])
-            nome_dispositivo = parts[4]
-            indirizzo_ip = parts[5]
-
-            scadenza = datetime.now() + timedelta(minutes=minuti)
-            dispositivi_manutenzione_scadenza[indirizzo_ip] = scadenza
-            save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
-
-            await manutenzione(update, context, "on", nome_dispositivo, indirizzo_ip)
-            await invia_messaggio(f"Manutenzione temporanea per {nome_dispositivo} attivata per {minuti} minuti.", chat_id)
         elif len(parts) == 4:
             action, nome_dispositivo, indirizzo_ip = parts[1:]
             if action == "off":
@@ -740,6 +727,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
             await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
 
+    elif query.data.startswith("manut_temp_val_"):
+        # Imposta manutenzione temporanea dispositivo
+        parts = query.data.split("_")
+        minuti = int(parts[3])
+        nome_dispositivo = parts[4]
+        indirizzo_ip = parts[5]
+
+        scadenza = datetime.now() + timedelta(minutes=minuti)
+        dispositivi_manutenzione_scadenza[indirizzo_ip] = scadenza
+        save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
+
+        await manutenzione(update, context, "on", nome_dispositivo, indirizzo_ip)
+        await invia_messaggio(f"Manutenzione temporanea per {nome_dispositivo} attivata per {minuti} minuti.", chat_id)
     # Gestione della conferma di aggiunta
     elif query.data.startswith("conferma_aggiunta_"):
         parts = query.data.split("_")
