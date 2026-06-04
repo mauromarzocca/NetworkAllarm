@@ -1,15 +1,14 @@
 ---
-# Playbook per l'aggiornamento massivo dei server con integrazione NetworkAllarm
-# Eseguire dal Nodo 2 (Raspberry Pi)
-
 ############################################
 # Init CSV report & NetworkAllarm Maintenance
 ############################################
-- name: Init Update Process
+- name: Init CSV report and Maintenance
   hosts: localhost
   gather_facts: yes
   vars:
     report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+    report_backup_dir: "/backup/ansible-reports"
+    report_nas_dir: "/mnt/nas_backup/Ansible_Reports"
     # Percorso del file di stato condiviso di NetworkAllarm
     na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
   tasks:
@@ -23,6 +22,20 @@
             "individual_expiries": {},
             "reason": "Aggiornamento Ansible"
           }
+      ignore_errors: true
+
+    - name: Create backup directory if needed
+      file:
+        path: "{{ report_backup_dir }}"
+        state: directory
+        mode: '0755'
+      ignore_errors: true
+
+    - name: Create NAS backup directory if needed
+      file:
+        path: "{{ report_nas_dir }}"
+        state: directory
+        mode: '0755'
       ignore_errors: true
 
     - name: Create CSV header
@@ -87,18 +100,33 @@
     snapshot_created: "false"
     error_message: ""
   tasks:
+    # ✅ FIX: Usa hostvars per risolvere proxmox_node senza loop
     - name: Set proxmox_node from inventory
       set_fact:
         proxmox_node_resolved: "{{ hostvars[inventory_hostname]['proxmox_node'] | default('localhost') }}"
 
     - block:
-        - name: Delete existing snapshot if exists
+        # ✅ Opzione A: Elimina snapshot esistente dello stesso giorno
+        - name: Delete existing snapshot if exists (QEMU)
           delegate_to: "{{ proxmox_node_resolved }}"
           become: true
           command: "qm delsnapshot {{ vmid }} {{ snap_name }}"
           when:
             - virt_type | default('') == "vm"
             - vmid is defined and vmid != 'N/A'
+          register: del_result
+          ignore_errors: true
+          changed_when: false
+
+        - name: Delete existing snapshot if exists (LXC)
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          command: "pct delsnapshot {{ vmid }} {{ snap_name }}"
+          when:
+            - virt_type | default('') == "lxc"
+            - not (lxc_privileged | default(false))
+            - vmid is defined and vmid != 'N/A'
+          register: del_result
           ignore_errors: true
           changed_when: false
 
@@ -113,13 +141,70 @@
           ignore_errors: true
           changed_when: false
 
-        - name: Mark snapshot as created
+        - name: Mark snapshot as created (QEMU)
           set_fact:
             snapshot_created: "true"
           when:
             - virt_type | default('') == "vm"
             - snapshot_result is defined
             - snapshot_result.rc | default(1) == 0
+
+        - name: Snapshot LXC (non privileged only)
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          command: "pct snapshot {{ vmid }} {{ snap_name }} --description 'Auto snapshot before update'"
+          when:
+            - virt_type | default('') == "lxc"
+            - not (lxc_privileged | default(false))
+            - vmid is defined and vmid != 'N/A'
+          register: snapshot_result
+          ignore_errors: true
+          changed_when: false
+
+        - name: Mark snapshot as created (LXC)
+          set_fact:
+            snapshot_created: "true"
+          when:
+            - virt_type | default('') == "lxc"
+            - not (lxc_privileged | default(false))
+            - snapshot_result is defined
+            - snapshot_result.rc | default(1) == 0
+
+        - name: Cleanup old QEMU snapshots
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          shell: |
+            snaps=$(qm listsnapshot {{ vmid }} 2>/dev/null | awk '/^{{ snapshot_prefix }}-/ {print $1}')
+            for s in $snaps; do
+              [ "$s" = "{{ snap_name }}" ] && continue
+              d="${s#{{ snapshot_prefix }}-}"
+              ts=$(date -d "$d" +%s 2>/dev/null || true)
+              [ -z "$ts" ] && continue
+              age=$(( ( $(date +%s) - ts ) / 86400 ))
+              [ "$age" -gt {{ snapshot_retention_days }} ] && qm delsnapshot {{ vmid }} "$s" 2>/dev/null || true
+            done
+          when: virt_type | default('') == "vm"
+          ignore_errors: true
+          changed_when: false
+
+        - name: Cleanup old LXC snapshots
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          shell: |
+            snaps=$(pct listsnapshot {{ vmid }} 2>/dev/null | awk '/^{{ snapshot_prefix }}-/ {print $1}')
+            for s in $snaps; do
+              [ "$s" = "{{ snap_name }}" ] && continue
+              d="${s#{{ snapshot_prefix }}-}"
+              ts=$(date -d "$d" +%s 2>/dev/null || true)
+              [ -z "$ts" ] && continue
+              age=$(( ( $(date +%s) - ts ) / 86400 ))
+              [ "$age" -gt {{ snapshot_retention_days }} ] && pct delsnapshot {{ vmid }} "$s" 2>/dev/null || true
+            done
+          when:
+            - virt_type | default('') == "lxc"
+            - not (lxc_privileged | default(false))
+          ignore_errors: true
+          changed_when: false
 
         - name: Update packages
           apt:
@@ -155,45 +240,123 @@
   gather_facts: true
   vars:
     report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+    snapshot_prefix: ansible
+    snapshot_retention_days: 7
+    snap_name: "{{ snapshot_prefix }}-{{ ansible_date_time.date }}"
+    snapshot_created: "false"
+    error_message: ""
   tasks:
+    - name: Set proxmox_node from inventory
+      set_fact:
+        proxmox_node_resolved: "{{ hostvars[inventory_hostname]['proxmox_node'] | default('localhost') }}"
+
     - block:
+        - name: Delete existing Windows snapshot if exists
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          command: "qm delsnapshot {{ vmid }} {{ snap_name }}"
+          register: del_result
+          ignore_errors: true
+          changed_when: false
+
+        - name: Snapshot Windows VM (QEMU)
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          command: "qm snapshot {{ vmid }} {{ snap_name }} --description 'Auto snapshot before Windows update'"
+          register: snapshot_result
+          ignore_errors: true
+          changed_when: false
+
+        - name: Mark snapshot as created (Windows)
+          set_fact:
+            snapshot_created: "true"
+          when:
+            - snapshot_result is defined
+            - snapshot_result.rc | default(1) == 0
+
         - name: Install Windows Updates
           ansible.windows.win_updates:
             category_names:
               - SecurityUpdates
               - CriticalUpdates
+              - UpdateRollups
             reboot: no
           register: win_updates
 
-        - name: Reboot Windows if required
+        - name: Ask reboot confirmation
+          pause:
+            prompt: "Reboot {{ inventory_hostname }} now? (yes/no)"
+          when: win_updates.reboot_required
+          register: win_reboot
+
+        - name: Reboot Windows if confirmed
           ansible.windows.win_reboot:
             reboot_timeout: 3600
-          when: win_updates.reboot_required
+          when:
+            - win_updates.reboot_required
+            - win_reboot.user_input == "yes"
+
+        - name: Cleanup old Windows VM snapshots
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          shell: |
+            snaps=$(qm listsnapshot {{ vmid }} 2>/dev/null | awk '/^{{ snapshot_prefix }}-/ {print $1}')
+            for s in $snaps; do
+              [ "$s" = "{{ snap_name }}" ] && continue
+              d="${s#{{ snapshot_prefix }}-}"
+              ts=$(date -d "$d" +%s 2>/dev/null || true)
+              [ -z "$ts" ] && continue
+              age=$(( ( $(date +%s) - ts ) / 86400 ))
+              [ "$age" -gt {{ snapshot_retention_days }} ] && qm delsnapshot {{ vmid }} "$s" 2>/dev/null || true
+            done
+          ignore_errors: true
+          changed_when: false
 
       rescue:
         - name: Set error message
           set_fact:
             error_message: "{{ (ansible_failed_result.msg | default('Unknown error')) | regex_replace('[{},]', '') | truncate(150) }}"
             win_updates: { "changed": false, "reboot_required": false }
+            snapshot_created: "false"
 
     - name: Append CSV report (Windows)
       delegate_to: localhost
       lineinfile:
         path: "{{ report_file }}"
-        line: "{{ inventory_hostname }},windows,vm,{{ win_updates.changed | default(false) }},false,{{ win_updates.reboot_required | default(false) }},N/A,{{ error_message | default('') }}"
+        line: "{{ inventory_hostname }},windows,vm,{{ win_updates.changed | default(false) }},false,{{ win_updates.reboot_required | default(false) }},{{ snapshot_created }},{{ error_message | default('') }}"
         create: yes
 
 ############################################
-# Finalize report & Restore NetworkAllarm
+# Backup CSV + Telegram + Email & Restore Monitoring
 ############################################
-- name: Backup and Restore Monitoring
+- name: Backup, Notifications and Restore Monitoring
   hosts: localhost
   gather_facts: no
   vars:
     report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
-    na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
+    report_backup_dir: "/backup/ansible-reports"
+    report_nas_dir: "/mnt/nas_backup/Ansible_Reports"
     telegram_api: "https://api.telegram.org/bot{{ telegram_bot_token }}"
+    na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
   tasks:
+    - name: Copy CSV to local backup directory
+      copy:
+        src: "{{ report_file }}"
+        dest: "{{ report_backup_dir }}/"
+        owner: "{{ ansible_user_id | default('mauromarzocca') }}"
+        group: "{{ ansible_user_id | default('mauromarzocca') }}"
+        mode: '0644'
+      ignore_errors: true
+
+    - name: Copy CSV to NAS backup directory
+      copy:
+        src: "{{ report_file }}"
+        dest: "{{ report_nas_dir }}/"
+        owner: "{{ ansible_user_id | default('mauromarzocca') }}"
+        group: "{{ ansible_user_id | default('mauromarzocca') }}"
+        mode: '0644'
+      ignore_errors: true
+
     - name: Disattiva Manutenzione Globale su NetworkAllarm
       copy:
         dest: "{{ na_state_file }}"
@@ -212,4 +375,14 @@
           -F chat_id="{{ telegram_chat_id }}" \
           -F document=@"{{ report_file }}" \
           -F caption="✅ Ansible Update Report Completato - {{ ansible_date_time.date }}"
+      ignore_errors: true
+
+    - name: Send mail with CSV report
+      mail:
+        host: localhost
+        port: 25
+        to: maurohomelab@gmail.com
+        subject: "Ansible Update Report {{ ansible_date_time.date }}"
+        body: "In allegato il report aggiornamenti."
+        attach: "{{ report_file }}"
       ignore_errors: true
