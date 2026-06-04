@@ -151,7 +151,10 @@ create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
-LAST_LOG_DATE_FILE = os.path.join(cartella_log_base, "last_daily_log_date.txt")
+# Definizione cartella per i file di stato (condivisa tramite cartella log)
+cartella_stato_condivisa = os.path.join(cartella_log_base, "stato")
+
+LAST_LOG_DATE_FILE = os.path.join(cartella_stato_condivisa, "last_daily_log_date.txt")
 
 def save_last_log_date(date_obj):
     try:
@@ -185,7 +188,7 @@ else:
 # Variabile per la manutenzione temporanea
 manutenzione_programmata_scadenza = None
 dispositivi_manutenzione_scadenza = {} # { "IP": datetime }
-MAINTENANCE_DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "maintenance_data.json")
+MAINTENANCE_DATA_FILE = os.path.join(cartella_stato_condivisa, "maintenance_data.json")
 
 def save_maintenance_data(global_expiry=None, individual_expiries=None, clear_global=False, global_manual=None):
     try:
@@ -296,7 +299,7 @@ async def controlla_connessione(indirizzo):
 
 # Variabile globale per tracciare il report in sospeso
 report_pending_date = None
-PENDING_REPORT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "report_pending.txt")
+PENDING_REPORT_FILE = os.path.join(cartella_stato_condivisa, "report_pending.txt")
 
 def save_pending_report(date_str):
     try:
