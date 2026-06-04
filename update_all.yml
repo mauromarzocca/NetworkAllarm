@@ -1,0 +1,215 @@
+---
+# Playbook per l'aggiornamento massivo dei server con integrazione NetworkAllarm
+# Eseguire dal Nodo 2 (Raspberry Pi)
+
+############################################
+# Init CSV report & NetworkAllarm Maintenance
+############################################
+- name: Init Update Process
+  hosts: localhost
+  gather_facts: yes
+  vars:
+    report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+    # Percorso del file di stato condiviso di NetworkAllarm
+    na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
+  tasks:
+    - name: Attiva Manutenzione Globale su NetworkAllarm
+      copy:
+        dest: "{{ na_state_file }}"
+        content: >
+          {
+            "global_expiry": null,
+            "global_manual": true,
+            "individual_expiries": {},
+            "reason": "Aggiornamento Ansible"
+          }
+      ignore_errors: true
+
+    - name: Create CSV header
+      copy:
+        dest: "{{ report_file }}"
+        content: "host,os,virt_type,updated,kernel_updated,reboot_required,snapshot_created,error_message\n"
+
+############################################
+# Update Control Node (Raspberry Pi / Ubuntu)
+############################################
+- name: Update control node (RPI)
+  hosts: control
+  become: true
+  gather_facts: yes
+  vars:
+    report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+  tasks:
+    - block:
+        - name: Update packages
+          apt:
+            update_cache: yes
+            upgrade: dist
+          register: pkg_update
+
+        - name: Check reboot required
+          stat:
+            path: /var/run/reboot-required
+          register: reboot_required
+
+        - name: Reboot if required
+          reboot:
+            reboot_timeout: 600
+          when: reboot_required.stat.exists
+
+      rescue:
+        - name: Set error message
+          set_fact:
+            error_message: "{{ (ansible_failed_result.msg | default('Unknown error')) | regex_replace('[{},]', '') | truncate(150) }}"
+            pkg_update: { "changed": false }
+            reboot_required: { "stat": { "exists": false } }
+
+    - name: Append CSV report (RPI/control)
+      delegate_to: localhost
+      lineinfile:
+        path: "{{ report_file }}"
+        line: "{{ inventory_hostname }},{{ ansible_distribution | default('ubuntu') }},host,{{ pkg_update.changed | default(false) }},false,{{ reboot_required.stat.exists | default(false) }},N/A,{{ error_message | default('') }}"
+        create: yes
+
+############################################
+# Update Linux VMs & LXC
+############################################
+- name: Update Linux VMs and LXC
+  hosts: vms_linux
+  become: true
+  gather_facts: yes
+  serial: 1
+  vars:
+    report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+    snapshot_prefix: ansible
+    snapshot_retention_days: 7
+    snap_name: "{{ snapshot_prefix }}-{{ ansible_date_time.date }}"
+    snapshot_created: "false"
+    error_message: ""
+  tasks:
+    - name: Set proxmox_node from inventory
+      set_fact:
+        proxmox_node_resolved: "{{ hostvars[inventory_hostname]['proxmox_node'] | default('localhost') }}"
+
+    - block:
+        - name: Delete existing snapshot if exists
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          command: "qm delsnapshot {{ vmid }} {{ snap_name }}"
+          when:
+            - virt_type | default('') == "vm"
+            - vmid is defined and vmid != 'N/A'
+          ignore_errors: true
+          changed_when: false
+
+        - name: Snapshot QEMU VM
+          delegate_to: "{{ proxmox_node_resolved }}"
+          become: true
+          command: "qm snapshot {{ vmid }} {{ snap_name }} --description 'Auto snapshot before update'"
+          when:
+            - virt_type | default('') == "vm"
+            - vmid is defined and vmid != 'N/A'
+          register: snapshot_result
+          ignore_errors: true
+          changed_when: false
+
+        - name: Mark snapshot as created
+          set_fact:
+            snapshot_created: "true"
+          when:
+            - virt_type | default('') == "vm"
+            - snapshot_result is defined
+            - snapshot_result.rc | default(1) == 0
+
+        - name: Update packages
+          apt:
+            update_cache: yes
+            upgrade: dist
+          register: pkg_update
+
+        - name: Check reboot required
+          stat:
+            path: /var/run/reboot-required
+          register: reboot_required
+
+      rescue:
+        - name: Set error message
+          set_fact:
+            error_message: "{{ (ansible_failed_result.msg | default('Unknown error')) | regex_replace('[{},]', '') | truncate(150) }}"
+            pkg_update: { "changed": false }
+            reboot_required: { "stat": { "exists": false } }
+            snapshot_created: "false"
+
+    - name: Append CSV report (Linux)
+      delegate_to: localhost
+      lineinfile:
+        path: "{{ report_file }}"
+        line: "{{ inventory_hostname }},{{ ansible_distribution }},{{ virt_type }},{{ pkg_update.changed | default(false) }},false,{{ reboot_required.stat.exists | default(false) }},{{ snapshot_created }},{{ error_message | default('') }}"
+        create: yes
+
+############################################
+# Update Windows VMs
+############################################
+- name: Update Windows VMs
+  hosts: vms_windows
+  gather_facts: true
+  vars:
+    report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+  tasks:
+    - block:
+        - name: Install Windows Updates
+          ansible.windows.win_updates:
+            category_names:
+              - SecurityUpdates
+              - CriticalUpdates
+            reboot: no
+          register: win_updates
+
+        - name: Reboot Windows if required
+          ansible.windows.win_reboot:
+            reboot_timeout: 3600
+          when: win_updates.reboot_required
+
+      rescue:
+        - name: Set error message
+          set_fact:
+            error_message: "{{ (ansible_failed_result.msg | default('Unknown error')) | regex_replace('[{},]', '') | truncate(150) }}"
+            win_updates: { "changed": false, "reboot_required": false }
+
+    - name: Append CSV report (Windows)
+      delegate_to: localhost
+      lineinfile:
+        path: "{{ report_file }}"
+        line: "{{ inventory_hostname }},windows,vm,{{ win_updates.changed | default(false) }},false,{{ win_updates.reboot_required | default(false) }},N/A,{{ error_message | default('') }}"
+        create: yes
+
+############################################
+# Finalize report & Restore NetworkAllarm
+############################################
+- name: Backup and Restore Monitoring
+  hosts: localhost
+  gather_facts: no
+  vars:
+    report_file: "/tmp/update-report-{{ ansible_date_time.date }}.csv"
+    na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
+    telegram_api: "https://api.telegram.org/bot{{ telegram_bot_token }}"
+  tasks:
+    - name: Disattiva Manutenzione Globale su NetworkAllarm
+      copy:
+        dest: "{{ na_state_file }}"
+        content: >
+          {
+            "global_expiry": null,
+            "global_manual": false,
+            "individual_expiries": {},
+            "reason": null
+          }
+      ignore_errors: true
+
+    - name: Send report file to Telegram
+      shell: |
+        curl -s -X POST "{{ telegram_api }}/sendDocument" \
+          -F chat_id="{{ telegram_chat_id }}" \
+          -F document=@"{{ report_file }}" \
+          -F caption="✅ Ansible Update Report Completato - {{ ansible_date_time.date }}"
+      ignore_errors: true
