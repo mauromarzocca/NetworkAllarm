@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.0.6"
+version = "10.1"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -151,7 +151,10 @@ create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
-LAST_LOG_DATE_FILE = os.path.join(cartella_log_base, "last_daily_log_date.txt")
+# Definizione cartella per i file di stato (condivisa tramite cartella log)
+cartella_stato_condivisa = os.path.join(cartella_log_base, "stato")
+
+LAST_LOG_DATE_FILE = os.path.join(cartella_stato_condivisa, "last_daily_log_date.txt")
 
 def save_last_log_date(date_obj):
     try:
@@ -185,9 +188,10 @@ else:
 # Variabile per la manutenzione temporanea
 manutenzione_programmata_scadenza = None
 dispositivi_manutenzione_scadenza = {} # { "IP": datetime }
-MAINTENANCE_DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "maintenance_data.json")
+manutenzione_reason = None
+MAINTENANCE_DATA_FILE = os.path.join(cartella_stato_condivisa, "maintenance_data.json")
 
-def save_maintenance_data(global_expiry=None, individual_expiries=None, clear_global=False, global_manual=None):
+def save_maintenance_data(global_expiry=None, individual_expiries=None, clear_global=False, global_manual=None, reason=None):
     try:
         os.makedirs(os.path.dirname(MAINTENANCE_DATA_FILE), exist_ok=True)
 
@@ -200,11 +204,14 @@ def save_maintenance_data(global_expiry=None, individual_expiries=None, clear_gl
         if clear_global:
             current_data["global_expiry"] = None
             current_data["global_manual"] = False
+            current_data["reason"] = None
         else:
             if global_expiry is not None:
                 current_data["global_expiry"] = global_expiry.isoformat()
             if global_manual is not None:
                 current_data["global_manual"] = global_manual
+            if reason is not None:
+                current_data["reason"] = reason
 
         if individual_expiries is not None:
             # Converti datetime in stringhe per JSON
@@ -218,17 +225,18 @@ def save_maintenance_data(global_expiry=None, individual_expiries=None, clear_gl
 def load_maintenance_data():
     try:
         if not os.path.exists(MAINTENANCE_DATA_FILE):
-            return None, {}, False
+            return None, {}, False, None
         with open(MAINTENANCE_DATA_FILE, "r") as f:
             data = json.load(f)
             expiry_str = data.get("global_expiry")
             global_expiry = datetime.fromisoformat(expiry_str) if expiry_str else None
             global_manual = data.get("global_manual", False)
+            reason = data.get("reason")
 
             individual_expiries_raw = data.get("individual_expiries", {})
             individual_expiries = {k: datetime.fromisoformat(v) if v else None for k, v in individual_expiries_raw.items()}
 
-            return global_expiry, individual_expiries, global_manual
+            return global_expiry, individual_expiries, global_manual, reason
     except Exception as e:
         print(f"Errore caricamento dati manutenzione: {e}")
         return None, {}, False
@@ -296,7 +304,7 @@ async def controlla_connessione(indirizzo):
 
 # Variabile globale per tracciare il report in sospeso
 report_pending_date = None
-PENDING_REPORT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stato", "report_pending.txt")
+PENDING_REPORT_FILE = os.path.join(cartella_stato_condivisa, "report_pending.txt")
 
 def save_pending_report(date_str):
     try:
@@ -496,21 +504,28 @@ def get_db_connection():
             return None
     return cnx
 
-async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global modalita_manutenzione
+async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, reason=None):
+    global modalita_manutenzione, manutenzione_reason
 
     if not modalita_manutenzione:
         modalita_manutenzione = True
-        save_maintenance_data(global_manual=True)
-        scrivi_log("Inizio manutenzione globale")
-        await invia_messaggio("Inizio manutenzione globale", config.chat_id)
+        manutenzione_reason = reason
+        save_maintenance_data(global_manual=True, reason=reason)
+
+        msg = "Inizio manutenzione globale"
+        if reason:
+            msg += f" ({reason})"
+
+        scrivi_log(msg)
+        await invia_messaggio(msg, config.chat_id)
 
 async def termina_manutenzione_logic():
-    global modalita_manutenzione, allarme_attivo
+    global modalita_manutenzione, allarme_attivo, manutenzione_reason
     
     if modalita_manutenzione:
         allarme_attivo = False
         modalita_manutenzione = False
+        manutenzione_reason = None
         scrivi_log("Fine manutenzione globale")
         await invia_messaggio("✅ Fine manutenzione globale", config.chat_id)
 
@@ -856,9 +871,10 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
     cnx.close()
        
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global dispositivi_manutenzione_scadenza
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
-    query = ("SELECT Nome, IP FROM monitor")
+    query = ("SELECT Nome, IP, Maintenence FROM monitor")
     cursor.execute(query)
     dispositivi = cursor.fetchall()
     cursor.close()
@@ -866,8 +882,22 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Crea righe da massimo 3 pulsanti
     pulsanti = []
-    for dispositivo in dispositivi:
-        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"manutenzione_{dispositivo[0]}_{dispositivo[1]}"))
+    for nome, ip, in_maint in dispositivi:
+        label = nome
+        if in_maint:
+            scadenza = dispositivi_manutenzione_scadenza.get(ip)
+            if scadenza:
+                rimanente = scadenza - datetime.now()
+                minuti = int(rimanente.total_seconds() / 60)
+                if minuti > 0:
+                    label += f" ({minuti}m)"
+                else:
+                    label += " (Scaduto)"
+            else:
+                label += " (Man.)"
+
+        pulsanti.append(InlineKeyboardButton(label, callback_data=f"manutenzione_{nome}_{ip}"))
+
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
     await invia_messaggio("Dove vuoi gestire la manutenzione?", update.effective_chat.id, reply_markup=keyboard)
@@ -890,7 +920,7 @@ async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     await invia_messaggio("Seleziona il dispositivo per informazioni avanzate:", chat_id, reply_markup=keyboard)
 
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global modalita_manutenzione
+    global modalita_manutenzione, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, manutenzione_reason
     stati_connessioni = []
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
@@ -902,15 +932,31 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     cnx.close()
 
     if modalita_manutenzione:
-        stati_connessioni.append("🔧 **Modalità Manutenzione Globale Attiva**\n")
+        header = "🔧 **Modalità Manutenzione Globale Attiva**"
+        if manutenzione_reason:
+            header += f"\nMotivo: {manutenzione_reason}"
+        if manutenzione_programmata_scadenza:
+            rimanente = manutenzione_programmata_scadenza - datetime.now()
+            minuti = int(rimanente.total_seconds() / 60)
+            if minuti > 0:
+                header += f"\nScadenza tra: {minuti} min"
+        stati_connessioni.append(header + "\n")
 
     for nome_dispositivo, indirizzo_ip, stato_manutenzione in dispositivi:
         if modalita_manutenzione or stato_manutenzione:
-            stato_desc = "Manutenzione"
+            scadenza_indiv = dispositivi_manutenzione_scadenza.get(indirizzo_ip)
+            tempo_extra = ""
+            if scadenza_indiv:
+                rimanente = scadenza_indiv - datetime.now()
+                minuti = int(rimanente.total_seconds() / 60)
+                if minuti > 0:
+                    tempo_extra = f" ({minuti} min rimanenti)"
+
+            stato_desc = f"Manutenzione{tempo_extra}"
             if modalita_manutenzione and stato_manutenzione:
-                stato_desc = "Manutenzione (Globale + Singola)"
+                stato_desc = f"Manutenzione (Globale + Singola){tempo_extra}"
             elif modalita_manutenzione:
-                stato_desc = "Manutenzione (Globale)"
+                stato_desc = f"Manutenzione (Globale)"
 
             stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato_desc}")
         else:
@@ -1484,7 +1530,7 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
 async def monitoraggio():
-    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date
+    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date, manutenzione_reason
     tutti_offline = False
     stato_precedente_connessioni = {}
     ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
@@ -1496,6 +1542,25 @@ async def monitoraggio():
 
     while True:
         try:
+            # Sincronizzazione stato manutenzione da file (per modifiche esterne/Ansible)
+            ext_global_expiry, ext_indiv_expiries, ext_global_manual, ext_reason = load_maintenance_data()
+
+            # Se lo stato manuale globale è cambiato esternamente
+            if ext_global_manual != (modalita_manutenzione and not manutenzione_programmata_scadenza):
+                if ext_global_manual:
+                    await avvia_manutenzione(None, None, reason=ext_reason)
+                elif not ext_global_expiry:
+                    await termina_manutenzione_logic()
+
+            # Aggiorna variabili locali
+            manutenzione_programmata_scadenza = ext_global_expiry
+            dispositivi_manutenzione_scadenza = ext_indiv_expiries
+            manutenzione_reason = ext_reason
+            if ext_global_expiry or ext_global_manual:
+                modalita_manutenzione = True
+            else:
+                modalita_manutenzione = False
+
             # Controllo aggiornamenti periodico (ogni 4 ore o all'avvio)
             if datetime.now() >= next_update_check:
                 try:
@@ -1746,7 +1811,7 @@ def main():
     application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
 
     # Carica dati manutenzione all'avvio
-    manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, global_manual = load_maintenance_data()
+    manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, global_manual, manutenzione_reason = load_maintenance_data()
 
     # Check globale
     if manutenzione_programmata_scadenza:
@@ -1754,6 +1819,7 @@ def main():
         if datetime.now() > manutenzione_programmata_scadenza:
             print("Scadenza globale già passata. Resetto flag...")
             manutenzione_programmata_scadenza = None
+            manutenzione_reason = None
             save_maintenance_data(clear_global=True)
             modalita_manutenzione = False
         else:

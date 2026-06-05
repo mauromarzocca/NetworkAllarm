@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.0.6
+Versione : 10.1
 
 ![logo](/img/logo.png)
 
@@ -263,6 +263,7 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - Versione 10.0.4 : Miglioramento nella gestione del nodo secondario.
   - Versione 10.0.5 : Miglioramento nella gestione dei dispositivi.
   - Versione 10.0.6 : Miglioramento della gestione della Manutenzione Temporanea.
+  - Versione 10.1 : Nuova gestione delle Manutenzioni.
 
 ---
 
