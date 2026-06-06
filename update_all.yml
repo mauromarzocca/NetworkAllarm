@@ -10,8 +10,15 @@
     report_backup_dir: "/backup/ansible-reports"
     report_nas_dir: "/mnt/nas_backup/Ansible_Reports"
     # Percorso del file di stato condiviso di NetworkAllarm
-    na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
+    na_state_dir: "{{ playbook_dir }}/log/stato"
+    na_state_file: "{{ na_state_dir }}/maintenance_data.json"
   tasks:
+    - name: Assicura che la directory di stato esista
+      file:
+        path: "{{ na_state_dir }}"
+        state: directory
+        mode: '0755'
+
     - name: Attiva Manutenzione Globale su NetworkAllarm
       copy:
         dest: "{{ na_state_file }}"
@@ -337,7 +344,7 @@
     report_backup_dir: "/backup/ansible-reports"
     report_nas_dir: "/mnt/nas_backup/Ansible_Reports"
     telegram_api: "https://api.telegram.org/bot{{ telegram_bot_token }}"
-    na_state_file: "/home/mauromarzocca/NetworkAllarm/log/stato/maintenance_data.json"
+    na_state_file: "{{ playbook_dir }}/log/stato/maintenance_data.json"
   tasks:
     - name: Copy CSV to local backup directory
       copy:
