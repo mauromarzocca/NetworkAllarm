@@ -17,7 +17,7 @@
 6. [Architettura AsyncIO e Telegram Bot API (Criticità Media)](#6-architettura-asyncio-e-telegram-bot-api)
 7. [Alta Disponibilità (Failover), Systemd e Update Manager (Criticità Media)](#7-alta-disponibilità-failover-systemd-e-update-manager)
 8. [Dipendenze, Igiene del Repository e Documentazione (Criticità Bassa)](#8-dipendenze-igiene-del-repository-e-documentazione)
-9. [Roadmap di Risoluzione Consigliata](#9-roadmap-di-risoluzione-consigliata)
+9. [Pianificazione a Fasi e Strategia delle Release](#9-pianificazione-a-fasi-e-strategia-delle-release)
 
 ---
 
@@ -260,43 +260,101 @@ In totale sono state censite **29 problematiche**, raggruppate in 6 macro-aree.
 
 ---
 
-## 9. Roadmap di Risoluzione Consigliata
+## 9. Pianificazione a Fasi e Strategia delle Release
+
+La risoluzione delle 29 problematiche identificate viene organizzata in una serie progressiva di release incrementali sul branch `audit_10`. Ciascuna fase corrisponde a una specifica versione semantica (`PATCH` o `MINOR`), testabile in isolamento prima di procedere con la Pull Request verso il branch `main`.
 
 ```mermaid
-flowchart TD
-    A["Fase 1: Sicurezza & Crash Bloccanti (P0/P1)"] --> B["Fase 2: Database & AsyncIO (P2)"]
-    B --> C["Fase 3: Failover & Architettura (P2)"]
-    C --> D["Fase 4: Igiene Repo & Documentazione (P3)"]
-
-    subgraph A["Fase 1: Sicurezza & Crash Bloccanti (P0/P1)"]
-        A1["Filtro utente_autorizzato su tutti i messaggi/callback"]
-        A2["Fix parametri config in notify_switch.py"]
-        A3["Allineamento return tuple in load_maintenance_data"]
-        A4["Inversione ordine tar/mysqldump in backup.py"]
-        A5["Safe vi edit in update_manager senza truncate preventivo"]
-    end
-
-    subgraph B["Fase 2: Database & AsyncIO (P2)"]
-        B1["Context Manager / finally su tutte le query MySQL"]
-        B2["Implementazione MySQLConnectionPool"]
-        B3["Migrazione avvio monitoraggio su post_init in ApplicationBuilder"]
-        B4["Correzione timer cancellazione messaggi (max 48h)"]
-        B5["Fix parsing e lunghezza callback_data (max 64 byte)"]
-    end
-
-    subgraph C["Fase 3: Failover & Architettura (P2)"]
-        C1["Allineamento case-sensitive nome servizio systemd"]
-        C2["Aggiunta debounce su failover-monitor (3 tentativi)"]
-        C3["Health check attivo (check DB e loop status)"]
-        C4["Uso di my.cnf per evitare password in chiaro da CLI"]
-    end
-
-    subgraph D["Fase 4: Igiene Repo & Documentazione (P3)"]
-        D1["Pulizia requirements.txt (rimozione telegram e ipaddress)"]
-        D2["Aggiornamento .gitignore completo e pulizia file ._*"]
-        D3["Aggiornamento CHANGELOG.md per v9, v10 e v10.1"]
-    end
+flowchart LR
+    R1["Fase 1: v10.1.1<br/>(Hotfix & Crash Bloccanti)"] --> R2["Fase 2: v10.2.0<br/>(Security & Auth Hardening)"]
+    R2 --> R3["Fase 3: v10.3.0<br/>(Database & Async Engine)"]
+    R3 --> R4["Fase 4: v10.4.0<br/>(HA, Failover & Systemd)"]
+    R4 --> R5["Fase 5: v10.5.0<br/>(Refactoring & Docs)"]
 ```
+
+---
+
+### Fase 1 — Release `v10.1.1` (Hotfix: Stabilità & Crash Immediati)
+> **Obiettivo:** "Zero Crash" immediato. Eliminare tutti i difetti logici che provocano crash a runtime senza stravolgere l'architettura esterna.
+
+- [ ] **Fix 4.1 (`notify_switch.py`):** Gestione sicura con fallback di `PRIMARY_HOSTNAME` e `SECONDARY_HOSTNAME` per evitare `AttributeError` durante lo stop del failover.
+- [ ] **Fix 4.2 (`main.py`):** Allineamento del ritorno dell'eccezione in `load_maintenance_data()` (restituire tupla a 4 elementi: `None, {}, False, None`) per prevenire crash di unpack.
+- [ ] **Fix 4.3 (`backup.py`):** Inversione dell'ordine: eseguire `mysqldump` **prima** di creare il file compresso `.tar` (come già in `backup_no_transfer.py`).
+- [ ] **Fix 4.4 (`update_manager.py`):** Rimuovere il `truncate` preventivo a 0 byte del file selezionato prima dell'avvio di `vi`.
+- [ ] **Fix 4.5 (`utils.py`):** Correzione della logica di logging quando viene passato solo `nome_dispositivo` o un messaggio descrittivo senza IP.
+- [ ] **Fix 4.7 (`main.py`):** Correzione dell'indice colonna nella modifica dispositivo (`result[1] != nuovo_nome` anziché `result[0]`).
+- [ ] **Fix 8.1 (`requirements.txt`):** Rimozione del pacchetto in conflitto `telegram` e dell'obsoleto `ipaddress`.
+
+**Criteri di Accettazione e Test Fase 1:**
+- Esecuzione `python3 notify_switch.py STOP` senza errori.
+- Simulazione di errore/JSON mancante su `maintenance_data.json` senza crash di unpack.
+- Esecuzione di `backup.py` e verifica che il `.tar` contenga effettivamente il file SQL aggiornato.
+- Verifica sintassi e compilazione pulita di tutti gli script.
+
+---
+
+### Fase 2 — Release `v10.2.0` (Security & Controllo Accessi)
+> **Obiettivo:** Proteggere il bot da accessi non autorizzati e mettere in sicurezza le credenziali di sistema.
+
+- [ ] **Fix 3.1 (Auth Telegram Totale):** Implementazione di un controllo/decoratore centralizzato `utente_autorizzato` applicato a tutti gli entry point (`/menu`, `button`, `button_handler`, `gestisci_azione`).
+- [ ] **Fix 3.2 (Password MySQL sicura):** Eliminazione del flag `-p{DB_PASSWORD}` dalla CLI in `backup.py`, `backup_no_transfer.py` e `restore.py`, adottando `--defaults-extra-file` o variabili d'ambiente protette.
+- [ ] **Fix 3.3 (SSH Paramiko):** Eliminazione di `AutoAddPolicy` incondizionato o implementazione di conferma manuale / gestione `known_hosts`; inserimento di `ssh.close()` in blocco `finally:`.
+- [ ] **Fix 3.4 (Protezione `config.py`):** Creazione di `config.example.py` come template tracciato, inserimento di `config.py` in `.gitignore` e adeguamento di `setup.py`.
+
+**Criteri di Accettazione e Test Fase 2:**
+- Tentativo di invio comandi da utente Telegram non autorizzato: rifiuto con messaggio o silenzio, nessun comando eseguito.
+- Esecuzione di backup senza passaggio della password su `ps aux`.
+- Verifica che `config.py` non venga tracciato in caso di nuove modifiche locali.
+
+---
+
+### Fase 3 — Release `v10.3.0` (Database MySQL & Async Engine PTB v20+)
+> **Obiettivo:** Ottimizzazione persistenza, assenza di connection leak e allineamento agli standard di `python-telegram-bot` v20+.
+
+- [ ] **Fix 5.1 & 5.2 (MySQL Connection Pooling & Leak):** Introduzione di `MySQLConnectionPool` e uso di context manager `with` per garantire la chiusura delle connessioni anche in errore; eliminazione delle connessioni ripetute per ogni singolo ping.
+- [ ] **Fix 6.1 (AsyncIO Event Loop):** Avvio nativo del task `avvio_monitoraggio()` tramite hook `post_init` di `ApplicationBuilder` in `main.py`, eliminando conflitti e deprecazioni di loop.
+- [ ] **Fix 6.2 (Retention Messaggi Telegram):** Riduzione del timer di cancellazione messaggi da 7 giorni a massimo 48 ore (limite rigido API Telegram) con eliminazione del memory leak di coroutine sospese.
+- [ ] **Fix 4.6 (Callback Telegram compatti):** Riorganizzazione dei `callback_data` sotto i 64 byte e uso di separatori non ambigui per evitare collisioni con underscore nei nomi.
+- [ ] **Fix 6.3, 6.4 & 6.5:** Rimozione handler callback morti, soppressione notifiche duplicate su `chat_id == effective_chat.id` e correzione typo testo report.
+
+**Criteri di Accettazione e Test Fase 3:**
+- Monitoraggio attivo per 10 minuti con 10+ nodi senza aumento del numero di connessioni MySQL aperte.
+- Avvio pulito dell'applicazione su Python 3.10+ senza warning sul loop di eventi.
+- Click sui bottoni di modifica/rimozione con nomi contenenti spazi o underscore senza errori 64-byte.
+
+---
+
+### Fase 4 — Release `v10.4.0` (Alta Disponibilità, Failover & Systemd)
+> **Obiettivo:** Rendere il cluster a doppio nodo robusto, esente da split-brain e integrato con systemd.
+
+- [ ] **Fix 7.1 (Systemd Case-Sensitivity):** Allineamento del nome del servizio tra `config.py` (`NetworkAllarm.service`) e `setup.py`.
+- [ ] **Fix 7.2 (Permessi Sudoers):** Generazione in `setup.py` della configurazione sudoers per consentire a `failover-monitor` il riavvio del servizio senza password.
+- [ ] **Fix 7.3 (Debounce Failover):** Aggiunta di una soglia di tolleranza su `failover-monitor.py` (es. 3 controlli falliti consecutivi con ritardo di 10s) per prevenire lo switch su micro-disconnessioni.
+- [ ] **Fix 7.4 (Health Check Dinamico):** Potenziamento dell'endpoint `/health` per verificare l'effettiva reattività del monitoraggio e la raggiungibilità del DB.
+- [ ] **Fix 7.5 (Update Manager via Git):** Conversione di `update_manager.py` all'utilizzo dei comandi nativi di Git (`git fetch`, `git checkout`, `git pull`).
+
+**Criteri di Accettazione e Test Fase 4:**
+- Simulazione caduta transitoria (1 pacchetto perso): il failover NON si attiva.
+- Simulazione caduta permanente del primario (>30s): il secondario si attiva e invia notifica.
+- Rientro del primario: il secondario si disattiva e cede il controllo senza errori.
+
+---
+
+### Fase 5 — Release `v10.5.0` (Igiene Repository & Documentazione)
+> **Obiettivo:** Pulizia definitiva del repository, completamento documentazione e standard di rilascio.
+
+- [ ] **Fix 8.2 (Pulizia AppleDouble):** Rimozione dei file `._*` e risoluzione definitiva del warning sull'indice dei pack di Git.
+- [ ] **Fix 8.3 (`.gitignore` completo):** Esclusione di `*.bak`, `*.sql`, `stato/*`, `log/*`, `__pycache__` e `._*`.
+- [ ] **Fix 8.4 (Changelog & Contributing):** Compilazione dettagliata di `CHANGELOG.md` per le versioni 9, 10 e 10.1, e stesura delle linee guida in `CONTRIBUTING.md`.
+
+---
+
+### Strategia di Sviluppo sul Branch `audit_10`
+
+1. **Unico Branch di Lavoro:** Tutti i commit delle fasi vengono applicati progressivamente sul branch `audit_10`.
+2. **Commit Atomici per Fase:** Ogni fase produce commit chiaramente etichettati (es. `fix(stability): corretti bug bloccanti Fase 1`).
+3. **Validazione e Test:** Al termine di ogni fase vengono eseguiti i test di regressione locali.
+4. **Pull Request verso `main`:** Una volta validata la fase (o le fasi concordate), l'utente effettua la PR dal branch `audit_10` verso `main` con il relativo tag di versione.
 
 ---
 *Documento generato automaticamente a scopo di audit interno.*
