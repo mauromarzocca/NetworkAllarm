@@ -19,8 +19,8 @@ def install_python_deps():
 
 # Helper to check/install system deps
 def check_system_deps():
-    print("Verifica dipendenze di sistema (git, mysql)...")
-    deps = ['git', 'mysql']
+    print("Verifica dipendenze di sistema (git, mysql, mysqldump)...")
+    deps = ['git', 'mysql', 'mysqldump']
     missing = []
 
     for dep in deps:
@@ -34,7 +34,7 @@ def check_system_deps():
             # Check if we can use apt
             if shutil.which('apt-get'):
                 print("Tento l'installazione automatica con apt-get...")
-                pkg_map = {'git': 'git', 'mysql': 'default-mysql-client'} # default-mysql-client is common for 'mysql' command
+                pkg_map = {'git': 'git', 'mysql': 'default-mysql-client', 'mysqldump': 'default-mysql-client'}
                 pkgs = [pkg_map.get(m, m) for m in missing]
                 cmd = ['sudo', 'apt-get', 'update']
                 subprocess.check_call(cmd)
