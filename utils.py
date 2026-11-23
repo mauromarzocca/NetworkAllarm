@@ -1,6 +1,8 @@
 import os
 import sys
 import asyncio
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 try:
     from telegram import Bot
@@ -22,6 +24,30 @@ if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
 import config
+
+@contextmanager
+def mysql_temp_config(user, password, host='localhost'):
+    """
+    Genera un file di configurazione temporaneo con permessi restrittivi 0600
+    per passare in sicurezza le credenziali a mysqldump/mysql tramite --defaults-extra-file.
+    Il file viene eliminato automaticamente al termine dell'operazione.
+    """
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.cnf', delete=False) as cnf:
+        cnf_path = cnf.name
+        cnf.write(f"[client]\nuser={user}\npassword={password}\nhost={host}\n")
+    try:
+        os.chmod(cnf_path, 0o600)
+    except OSError:
+        pass
+
+    try:
+        yield cnf_path
+    finally:
+        if os.path.exists(cnf_path):
+            try:
+                os.remove(cnf_path)
+            except OSError:
+                pass
 
 # Coda per il logging asincrono
 log_queue = queue.Queue()

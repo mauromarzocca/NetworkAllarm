@@ -1,3 +1,27 @@
-
-Old Build/.DS_Store
+# macOS
 .DS_Store
+._*
+Old Build/.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Credenziali e configurazioni locali sensibili
+# NOTA: Per ignorare modifiche locali a config.py senza cancellarlo dal repository:
+# git update-index --skip-worktree config.py
+config.py
+*.cnf
+
+# File temporanei e di stato runtime
+stato/
+log/*.log
+log/*/*.log
+*.sql
+*.tar

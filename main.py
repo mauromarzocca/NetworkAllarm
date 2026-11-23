@@ -2,6 +2,7 @@ import subprocess
 import asyncio
 import os
 import sys
+from functools import wraps
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -22,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.1.1"
+version = "10.2.0"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -548,37 +549,68 @@ async def manutenzione_silent_off(nome_dispositivo, indirizzo_ip):
     cnx.close()
 
 def utente_autorizzato(user_id):
-    return user_id in config.autorizzati
+    if not hasattr(config, 'autorizzati') or not config.autorizzati:
+        return False
+    try:
+        autorizzati_set = {int(x) for x in config.autorizzati if str(x).strip().isdigit()}
+        return int(user_id) in autorizzati_set
+    except (ValueError, TypeError):
+        return False
 
+def richiede_autorizzazione(func):
+    """
+    Decoratore per verificare l'autorizzazione dell'utente Telegram.
+    Blocca le richieste non autorizzate sia da comandi che da pulsanti/messaggi.
+    """
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        if update is None:
+            return await func(update, context, *args, **kwargs)
+        user = update.effective_user
+        if not user or not utente_autorizzato(user.id):
+            user_info = f"ID: {user.id} (@{user.username})" if user else "Utente Sconosciuto"
+            print(f"Tentativo di accesso non autorizzato da {user_info}")
+            if update.callback_query:
+                try:
+                    await update.callback_query.answer("⛔ Non sei autorizzato ad utilizzare questo bot.", show_alert=True)
+                except Exception:
+                    pass
+            elif update.effective_message:
+                try:
+                    await update.effective_message.reply_text("⛔ Non sei autorizzato ad utilizzare questo bot.")
+                except Exception:
+                    pass
+            return
+        return await func(update, context, *args, **kwargs)
+    return wrapper
+
+@richiede_autorizzazione
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    if utente_autorizzato(user.id):
-        nodo = get_nodo_corrente()
+    nodo = get_nodo_corrente()
 
-        # Controllo aggiornamenti
-        try:
-            loop = asyncio.get_running_loop()
-            latest_version, is_new = await loop.run_in_executor(executor, check_new_release, version)
-        except Exception as e:
-            print(f"Errore controllo aggiornamenti: {e}")
-            latest_version, is_new = None, False
+    # Controllo aggiornamenti
+    try:
+        loop = asyncio.get_running_loop()
+        latest_version, is_new = await loop.run_in_executor(executor, check_new_release, version)
+    except Exception as e:
+        print(f"Errore controllo aggiornamenti: {e}")
+        latest_version, is_new = None, False
 
-        version_msg = f"Versione: <b>{version}</b>"
-        if latest_version:
-            if is_new:
-                version_msg += f"\n⚠️ Nuova versione disponibile: {latest_version}"
-            else:
-                version_msg += " (Aggiornato)"
+    version_msg = f"Versione: <b>{version}</b>"
+    if latest_version:
+        if is_new:
+            version_msg += f"\n⚠️ Nuova versione disponibile: {latest_version}"
+        else:
+            version_msg += " (Aggiornato)"
 
-        messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n{version_msg}\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
-        await update.message.reply_text(
-            messaggio,
-            reply_markup=get_custom_keyboard(),
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_text('Non sei autorizzato a utilizzare questo bot.')
+    messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n{version_msg}\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
+    await update.message.reply_text(
+        messaggio,
+        reply_markup=get_custom_keyboard(),
+        parse_mode="HTML"
+    )
         
+@richiede_autorizzazione
 async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id if update.message else update.callback_query.message.chat_id
     await invia_messaggio("Menu Comandi:", chat_id, reply_markup=get_keyboard())
@@ -624,6 +656,7 @@ def get_custom_keyboard():
         [button_list[5], button_list[6]]
     ], resize_keyboard=True)
 
+@richiede_autorizzazione
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global manutenzione_programmata_scadenza
     if update.callback_query:
@@ -797,6 +830,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
         await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
 
+@richiede_autorizzazione
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
@@ -815,6 +849,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "☑️ Start":
         await start(update, context)
 
+@richiede_autorizzazione
 async def menu_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("✅ Attiva (ON)", callback_data='manutenzione_on_global'),
@@ -823,6 +858,7 @@ async def menu_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await invia_messaggio("Gestione Manutenzione Globale:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
+@richiede_autorizzazione
 async def menu_manutenzione_temporanea(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("30 Minuti", callback_data='manutenzione_temp_30'),
@@ -831,6 +867,7 @@ async def menu_manutenzione_temporanea(update: Update, context: ContextTypes.DEF
     ]
     await invia_messaggio("Seleziona la durata della manutenzione:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
+@richiede_autorizzazione
 async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Aggiungi", callback_data='aggiungi_dispositivo_callback'),
@@ -839,6 +876,7 @@ async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAUL
     ]
     await invia_messaggio("Gestione Dispositivo:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
+@richiede_autorizzazione
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
     cursor = cnx.cursor()
@@ -870,6 +908,7 @@ async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, actio
     cursor.close()
     cnx.close()
        
+@richiede_autorizzazione
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global dispositivi_manutenzione_scadenza
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -902,6 +941,7 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
 
     await invia_messaggio("Dove vuoi gestire la manutenzione?", update.effective_chat.id, reply_markup=keyboard)
 
+@richiede_autorizzazione
 async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
@@ -919,6 +959,7 @@ async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await invia_messaggio("Seleziona il dispositivo per informazioni avanzate:", chat_id, reply_markup=keyboard)
 
+@richiede_autorizzazione
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, manutenzione_reason
     stati_connessioni = []
@@ -968,14 +1009,17 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     messaggio = "\n".join(stati_connessioni)
     await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio)
 
+@richiede_autorizzazione
 async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await invia_log_corrente(chat_id)
 
+@richiede_autorizzazione
 async def aggiungi_dispositivo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await invia_messaggio("Inserisci il nome del dispositivo:", update.effective_chat.id)
     context.user_data['azione'] = 'aggiungi_dispositivo_nome'
 
+@richiede_autorizzazione
 async def invia_info_avanzate(update: Update, context: ContextTypes.DEFAULT_TYPE, nome_dispositivo, indirizzo_ip):
     chat_id = update.effective_chat.id
     # Chiedi sempre l'username prima di tentare la connessione
@@ -986,6 +1030,7 @@ async def invia_info_avanzate(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
     await invia_messaggio("Inserisci l'username per la connessione SSH:", chat_id)
 
+@richiede_autorizzazione
 async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     azione = context.user_data.get('azione')
     if azione == 'aggiungi_dispositivo_nome':
@@ -1193,6 +1238,10 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif fase == 'password':
             username = context.user_data['system_advance']['username']
             password = update.message.text
+            try:
+                await update.message.delete()
+            except Exception:
+                pass
             nome_dispositivo = context.user_data['system_advance']['nome_dispositivo']
             indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
             # Prova SSH con password
@@ -1222,6 +1271,10 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             indirizzo_ip = context.user_data['system_advance']['indirizzo_ip']
             username = context.user_data['system_advance']['windows_username']
             password = update.message.text
+            try:
+                await update.message.delete()
+            except Exception:
+                pass
             # Prova SSH con credenziali Windows
             await esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username, password, chiedi_password=False)
             del context.user_data['system_advance']
@@ -1232,9 +1285,11 @@ def _esegui_system_advance_sync(chat_id, nome_dispositivo, indirizzo_ip, usernam
     # Ritorna messaggi da inviare o status code
     messaggi_da_inviare = []
     status = "ok"
+    ssh = None
 
     try:
         ssh = paramiko.SSHClient()
+        ssh.load_system_host_keys()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         if password is None:
             ssh.connect(indirizzo_ip, username=username, timeout=5)
@@ -1420,7 +1475,6 @@ def _esegui_system_advance_sync(chat_id, nome_dispositivo, indirizzo_ip, usernam
                 f"Spazio disco:\n"
                 f"```\n{output or 'Dati non disponibili'}\n```")
 
-        ssh.close()
     except paramiko.AuthenticationException:
         if chiedi_password:
             status = "auth_failed"
@@ -1441,6 +1495,12 @@ def _esegui_system_advance_sync(chat_id, nome_dispositivo, indirizzo_ip, usernam
             )
         else:
             messaggi_da_inviare.append(f"Errore SSH: {repr(e)}")
+    finally:
+        if ssh:
+            try:
+                ssh.close()
+            except Exception:
+                pass
 
     return status, messaggi_da_inviare
 
@@ -1464,6 +1524,7 @@ async def esegui_system_advance(update, nome_dispositivo, indirizzo_ip, username
 
     return status
 
+@richiede_autorizzazione
 async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await invia_messaggio("Quale dispositivo vuoi rimuovere?", chat_id)
@@ -1497,6 +1558,7 @@ async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
     scrivi_log(f"Rimosso Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
     #await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", config.chat_id)
 
+@richiede_autorizzazione
 async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await invia_messaggio("Quale dispositivo vuoi modificare?", chat_id)

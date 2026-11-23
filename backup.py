@@ -9,7 +9,7 @@ import asyncio
 # Importa le configurazioni dal progetto
 import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from utils import invia_messaggio, scrivi_log
+from utils import invia_messaggio, scrivi_log, mysql_temp_config
 
 # Configurazione base
 project_name = config.PROJECT_NAME
@@ -37,15 +37,17 @@ async def esegui_backup():
         if not shutil.which("mysqldump"):
             raise FileNotFoundError("Comando 'mysqldump' non trovato nel sistema. Installa 'default-mysql-client' o 'mariadb-client'.")
 
-        # Creazione backup del database (prima dell'archiviazione tar)
+        # Creazione backup del database in modo sicuro (senza password su CLI)
         db_backup_filepath = os.path.join(project_dir, f"{DB_NAME}_backup.sql")
         print("🔄 Backup del database in corso...")
-        with open(db_backup_filepath, "w") as sql_file:
-            subprocess.run(
-                ["mysqldump", "-u", DB_USER, f"-p{DB_PASSWORD}", DB_NAME],
-                stdout=sql_file,
-                check=True
-            )
+        db_host = getattr(config, 'DB_HOST', 'localhost')
+        with mysql_temp_config(DB_USER, DB_PASSWORD, db_host) as cnf_file:
+            with open(db_backup_filepath, "w") as sql_file:
+                subprocess.run(
+                    ["mysqldump", f"--defaults-extra-file={cnf_file}", DB_NAME],
+                    stdout=sql_file,
+                    check=True
+                )
         print("✅ Backup del database completato.")
 
         # Creazione archivio tar comprensivo del dump database

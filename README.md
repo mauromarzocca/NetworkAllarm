@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.1.1
+Versione : 10.2.0
 
 ![logo](/img/logo.png)
 
@@ -272,6 +272,12 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
     - Risolto errore sul controllo duplicati in modifica dispositivo in [main](./main.py).
     - Corretta la gestione del logger in [utils](./utils.py) per messaggi ed eventi descrittivi privi di IP.
     - Pulizia e ottimizzazione delle dipendenze in [requirements.txt](./requirements.txt).
+  - Versione 10.2.0 : Security & Controllo Accessi:
+    - Implementato decoratore centralizzato `@richiede_autorizzazione` su tutti gli entry-point Telegram (comandi, tastiere inline, callback e messaggi di testo) con tolleranza formati ID (stringa/intero).
+    - Protezione credenziali MySQL: rimozione del flag `-p` in chiaro da riga di comando per `mysqldump` e `mysql` in [backup](./backup.py), [backup_no_transfer](./backup_no_transfer.py) e [restore](./restore.py), adottando file `.cnf` temporaneo protetto (permessi 0600) via [utils](./utils.py).
+    - Hardening SSH Paramiko in [main](./main.py): chiusura garantita della sessione SSH tramite blocco `finally: ssh.close()` per prevenire leak di socket e caricamento chiavi note di sistema (`known_hosts`).
+    - Auto-eliminazione immediata dei messaggi Telegram contenenti password inserite durante la procedura di System Advance.
+    - Introdotto [config.example.py](./config.example.py) come template tracciato di riferimento e aggiornato [.gitignore](./.gitignore) per la protezione di credenziali, file temporanei e stati locali.
 
 ---
 
