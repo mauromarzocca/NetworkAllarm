@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.1
+Versione : 10.1.1
 
 ![logo](/img/logo.png)
 
@@ -264,6 +264,14 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - Versione 10.0.5 : Miglioramento nella gestione dei dispositivi.
   - Versione 10.0.6 : Miglioramento della gestione della Manutenzione Temporanea.
   - Versione 10.1 : Nuova gestione delle Manutenzioni.
+  - Versione 10.1.1 : Risoluzione problematiche di stabilità e crash a runtime:
+    - Risolto crash in [notify_switch](./notify_switch.py) durante lo stop del failover tramite fallback sicuro sugli hostname.
+    - Risolto crash di unpack tuple in [main](./main.py) (`load_maintenance_data`) in presenza di dati non validi o corrotti.
+    - Corretto l'ordine nel processo di backup in [backup](./backup.py): dump MySQL eseguito e verificato prima della creazione dell'archivio `.tar`.
+    - Rimosso lo svuotamento preventivo a 0 byte del file in [Update_Manager](./update_manager.py) prima dell'apertura dell'editor `vi`.
+    - Risolto errore sul controllo duplicati in modifica dispositivo in [main](./main.py).
+    - Corretta la gestione del logger in [utils](./utils.py) per messaggi ed eventi descrittivi privi di IP.
+    - Pulizia e ottimizzazione delle dipendenze in [requirements.txt](./requirements.txt).
 
 ---
 

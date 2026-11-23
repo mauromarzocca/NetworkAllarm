@@ -79,3 +79,7 @@
 - Versione 8.3.3 : Risolte problematiche relative all'aggiunta di un dispositivo in Maintenence Mode.
 - Versione 8.4 : Creazione dello script di [aggiornamento](./upgrade.py) automatico.
 - Versione 8.4.1 : Migliorata la UI del Bot.
+
+---
+
+> Per le versioni successive (Versione 9, 10 e successive), fare riferimento alla sezione [Note sulle versioni](README.md#note-sulle-versioni) nel file README.md.
