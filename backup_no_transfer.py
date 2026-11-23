@@ -2,6 +2,7 @@ import os
 import tarfile
 import datetime
 import subprocess
+import shutil
 import sys
 import asyncio  # Importiamo asyncio per gestire le coroutine
 
@@ -28,6 +29,10 @@ backup_path = os.path.join(backup_dir, backup_filename)
 
 async def esegui_backup():
     try:
+        # Verifica preventiva presenza di mysqldump
+        if not shutil.which("mysqldump"):
+            raise FileNotFoundError("Comando 'mysqldump' non trovato nel sistema. Installa 'default-mysql-client' o 'mariadb-client'.")
+
         # Backup del database MySQL
         db_backup_file = os.path.join(project_dir, f"{DB_NAME}_backup.sql")
 

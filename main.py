@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.1"
+version = "10.1.1"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -239,7 +239,7 @@ def load_maintenance_data():
             return global_expiry, individual_expiries, global_manual, reason
     except Exception as e:
         print(f"Errore caricamento dati manutenzione: {e}")
-        return None, {}, False
+        return None, {}, False, None
 
 # Variabili globali aggiunte
 modalita_manutenzione = False
@@ -1098,8 +1098,9 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.close()
             cnx.close()
 
-            if result and result[0] != nuovo_nome:
-                await invia_messaggio(f"Il dispositivo con l'indirizzo IP {nuovo_indirizzo_ip} è già presente nel database.", update.effective_chat.id)
+            if result:
+                dispositivo_esistente = result[1]
+                await invia_messaggio(f"Il dispositivo '{dispositivo_esistente}' con l'indirizzo IP {nuovo_indirizzo_ip} è già presente nel database.", update.effective_chat.id)
                 context.user_data['nome_dispositivo'] = vecchio_nome
                 context.user_data['azione'] = None
                 return

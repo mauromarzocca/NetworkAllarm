@@ -70,6 +70,10 @@ def scrivi_log(tipo_evento, nome_dispositivo=None, indirizzo_ip=None):
 
     if nome_dispositivo and indirizzo_ip:
         evento = f"{ora_evento} - {tipo_evento} - {nome_dispositivo} ({indirizzo_ip})"
+    elif nome_dispositivo:
+        evento = f"{ora_evento} - {tipo_evento} - {nome_dispositivo}"
+    elif indirizzo_ip:
+        evento = f"{ora_evento} - {tipo_evento} - ({indirizzo_ip})"
     else:
         evento = f"{ora_evento} - {tipo_evento}"
 

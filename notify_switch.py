@@ -61,10 +61,20 @@ def main():
                 messaggio = f"Switch su Nodo {nodo_attivo}"
                 salva_ultimo_nodo(nodo_attivo)
         elif azione == "STOP":
-            # Recuperiamo i nomi visualizzati dalla configurazione
-            # Nota: le chiavi 'first_device' e 'second_device' devono corrispondere ai hostname reali o definiti in config
-            first_device_name = config.NODE_ALIASES.get(config.PRIMARY_HOSTNAME, "First Device")
-            second_device_name = config.NODE_ALIASES.get(config.SECONDARY_HOSTNAME, "Second Device")
+            # Recuperiamo i nomi visualizzati dalla configurazione con fallback sicuro
+            node_aliases = getattr(config, 'NODE_ALIASES', {})
+            alias_keys = list(node_aliases.keys())
+
+            primary_key = getattr(config, 'PRIMARY_HOSTNAME', None)
+            if not primary_key and len(alias_keys) > 0:
+                primary_key = alias_keys[0]
+
+            secondary_key = getattr(config, 'SECONDARY_HOSTNAME', None)
+            if not secondary_key and len(alias_keys) > 1:
+                secondary_key = alias_keys[1]
+
+            first_device_name = node_aliases.get(primary_key, "First Device") if primary_key else "First Device"
+            second_device_name = node_aliases.get(secondary_key, "Second Device") if secondary_key else "Second Device"
 
             if nodo_corrente == second_device_name:
                 nodo_attivo = first_device_name

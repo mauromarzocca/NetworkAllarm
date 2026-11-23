@@ -255,24 +255,7 @@ def manual_update_editor():
 
             backup_path = backup_file(filename)
 
-            # Truncate file (Note: this is aggressive, but requested behaviour for manual update)
-            # Actually, standard behavior for 'manual update' usually implies editing existing content,
-            # but the previous code truncated it. If the user wants to EDIT, truncating is weird unless
-            # they are pasting new content. I will keep existing logic but warn if it was empty.
-            # WAIT: The previous logic TRUNCATED the file: `with open(filename, 'w') as f: pass`.
-            # This means opening 'vi' on an empty file.
-            # If the user wants to EDIT the file, this is destructive.
-            # However, I must stick to the existing behavior unless asked otherwise,
-            # BUT the hash check relies on content change.
-
-            # To properly support "no change detected", we need to see what happens.
-            # If I truncate, the hash changes immediately to empty string hash.
-            # If the user pastes the SAME content back, the hash matches.
-
-            with open(filename, 'w') as f:
-                pass # Empty the file
-
-            print(f"   [Update] File truncated. Opening vi...")
+            print(f"   [Update] Opening vi to edit {filename}...")
 
             # Open vi
             try:

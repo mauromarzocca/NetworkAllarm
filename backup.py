@@ -2,6 +2,7 @@ import os
 import tarfile
 import datetime
 import subprocess
+import shutil
 import sys
 import asyncio
 
@@ -32,12 +33,11 @@ backup_filepath = os.path.join(backup_dir, backup_filename)
 # Funzione per eseguire il backup
 async def esegui_backup():
     try:
-        print(f"🗂 Creazione archivio: {backup_filepath}")
-        with tarfile.open(backup_filepath, "w") as tar:
-            tar.add(project_dir, arcname=project_name)
-        print("✅ Backup della directory completato.")
+        # Verifica preventiva presenza di mysqldump
+        if not shutil.which("mysqldump"):
+            raise FileNotFoundError("Comando 'mysqldump' non trovato nel sistema. Installa 'default-mysql-client' o 'mariadb-client'.")
 
-        # Creazione backup del database
+        # Creazione backup del database (prima dell'archiviazione tar)
         db_backup_filepath = os.path.join(project_dir, f"{DB_NAME}_backup.sql")
         print("🔄 Backup del database in corso...")
         with open(db_backup_filepath, "w") as sql_file:
@@ -47,6 +47,16 @@ async def esegui_backup():
                 check=True
             )
         print("✅ Backup del database completato.")
+
+        # Creazione archivio tar comprensivo del dump database
+        print(f"🗂 Creazione archivio: {backup_filepath}")
+        with tarfile.open(backup_filepath, "w") as tar:
+            tar.add(project_dir, arcname=project_name)
+        print("✅ Backup della directory completato.")
+
+        # Rimozione file SQL temporaneo dopo l'archiviazione
+        if os.path.exists(db_backup_filepath):
+            os.remove(db_backup_filepath)
 
         # Messaggio di backup riuscito
         messaggio_backup = f"✅ Backup completato con successo.\nFile: {backup_filename}"
