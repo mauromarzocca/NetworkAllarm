@@ -7,8 +7,9 @@ import sys
 import asyncio  # Importiamo asyncio per gestire le coroutine
 
 # Import delle configurazioni e funzioni
+import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from utils import invia_messaggio, scrivi_log
+from utils import invia_messaggio, scrivi_log, mysql_temp_config
 
 # Configurazione
 project_name = "NetworkAllarm"
@@ -33,13 +34,15 @@ async def esegui_backup():
         if not shutil.which("mysqldump"):
             raise FileNotFoundError("Comando 'mysqldump' non trovato nel sistema. Installa 'default-mysql-client' o 'mariadb-client'.")
 
-        # Backup del database MySQL
+        # Backup del database MySQL in modo sicuro (senza password su CLI)
         db_backup_file = os.path.join(project_dir, f"{DB_NAME}_backup.sql")
+        db_host = getattr(config, 'DB_HOST', 'localhost')
 
-        subprocess.run(
-            ["mysqldump", "-u", DB_USER, f"-p{DB_PASSWORD}", DB_NAME, "-r", db_backup_file],
-            check=True
-        )
+        with mysql_temp_config(DB_USER, DB_PASSWORD, db_host) as cnf_file:
+            subprocess.run(
+                ["mysqldump", f"--defaults-extra-file={cnf_file}", DB_NAME, "-r", db_backup_file],
+                check=True
+            )
 
         # Creazione dell'archivio tar
         with tarfile.open(backup_path, "w") as tar:

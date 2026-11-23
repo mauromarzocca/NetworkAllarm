@@ -6,8 +6,9 @@ import asyncio
 import shutil
 
 # Importiamo le configurazioni e le funzioni dal progetto
+import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from utils import invia_messaggio, scrivi_log
+from utils import invia_messaggio, scrivi_log, mysql_temp_config
 
 # Configurazione
 project_name = "NetworkAllarm"
@@ -89,13 +90,15 @@ async def esegui_restore():
 
         print(f"🔄 Ripristino database da: {db_backup_file}")
 
-        # Ripristino database con comando corretto
-        with open(db_backup_file, "r") as sql_file:
-            subprocess.run(
-                ["mysql", "-u", DB_USER, f"-p{DB_PASSWORD}", DB_NAME],
-                stdin=sql_file,
-                check=True
-            )
+        # Ripristino database con comando sicuro (senza password su CLI)
+        db_host = getattr(config, 'DB_HOST', 'localhost')
+        with mysql_temp_config(DB_USER, DB_PASSWORD, db_host) as cnf_file:
+            with open(db_backup_file, "r") as sql_file:
+                subprocess.run(
+                    ["mysql", f"--defaults-extra-file={cnf_file}", DB_NAME],
+                    stdin=sql_file,
+                    check=True
+                )
 
         print("✅ Database ripristinato con successo.")
 

@@ -296,10 +296,10 @@ flowchart LR
 ### Fase 2 — Release `v10.2.0` (Security & Controllo Accessi)
 > **Obiettivo:** Proteggere il bot da accessi non autorizzati e mettere in sicurezza le credenziali di sistema.
 
-- [ ] **Fix 3.1 (Auth Telegram Totale):** Implementazione di un controllo/decoratore centralizzato `utente_autorizzato` applicato a tutti gli entry point (`/menu`, `button`, `button_handler`, `gestisci_azione`).
-- [ ] **Fix 3.2 (Password MySQL sicura):** Eliminazione del flag `-p{DB_PASSWORD}` dalla CLI in `backup.py`, `backup_no_transfer.py` e `restore.py`, adottando `--defaults-extra-file` o variabili d'ambiente protette.
-- [ ] **Fix 3.3 (SSH Paramiko):** Eliminazione di `AutoAddPolicy` incondizionato o implementazione di conferma manuale / gestione `known_hosts`; inserimento di `ssh.close()` in blocco `finally:`.
-- [ ] **Fix 3.4 (Protezione `config.py`):** Creazione di `config.example.py` come template tracciato, inserimento di `config.py` in `.gitignore` e adeguamento di `setup.py`.
+- [x] **Fix 3.1 (Auth Telegram Totale):** Implementazione di un controllo/decoratore centralizzato `utente_autorizzato` applicato a tutti gli entry point (`/menu`, `button`, `button_handler`, `gestisci_azione`).
+- [x] **Fix 3.2 (Password MySQL sicura):** Eliminazione del flag `-p{DB_PASSWORD}` dalla CLI in `backup.py`, `backup_no_transfer.py` e `restore.py`, adottando `--defaults-extra-file` o variabili d'ambiente protette.
+- [x] **Fix 3.3 (SSH Paramiko):** Eliminazione di `AutoAddPolicy` incondizionato o implementazione di conferma manuale / gestione `known_hosts`; inserimento di `ssh.close()` in blocco `finally:`.
+- [x] **Fix 3.4 (Protezione `config.py`):** Creazione di `config.example.py` come template tracciato, inserimento di `config.py` in `.gitignore` e adeguamento di `setup.py`.
 
 **Criteri di Accettazione e Test Fase 2:**
 - Tentativo di invio comandi da utente Telegram non autorizzato: rifiuto con messaggio o silenzio, nessun comando eseguito.
