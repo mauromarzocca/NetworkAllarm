@@ -277,13 +277,13 @@ flowchart LR
 ### Fase 1 — Release `v10.1.1` (Hotfix: Stabilità & Crash Immediati)
 > **Obiettivo:** "Zero Crash" immediato. Eliminare tutti i difetti logici che provocano crash a runtime senza stravolgere l'architettura esterna.
 
-- [ ] **Fix 4.1 (`notify_switch.py`):** Gestione sicura con fallback di `PRIMARY_HOSTNAME` e `SECONDARY_HOSTNAME` per evitare `AttributeError` durante lo stop del failover.
-- [ ] **Fix 4.2 (`main.py`):** Allineamento del ritorno dell'eccezione in `load_maintenance_data()` (restituire tupla a 4 elementi: `None, {}, False, None`) per prevenire crash di unpack.
-- [ ] **Fix 4.3 (`backup.py`):** Inversione dell'ordine: eseguire `mysqldump` **prima** di creare il file compresso `.tar` (come già in `backup_no_transfer.py`).
-- [ ] **Fix 4.4 (`update_manager.py`):** Rimuovere il `truncate` preventivo a 0 byte del file selezionato prima dell'avvio di `vi`.
-- [ ] **Fix 4.5 (`utils.py`):** Correzione della logica di logging quando viene passato solo `nome_dispositivo` o un messaggio descrittivo senza IP.
-- [ ] **Fix 4.7 (`main.py`):** Correzione dell'indice colonna nella modifica dispositivo (`result[1] != nuovo_nome` anziché `result[0]`).
-- [ ] **Fix 8.1 (`requirements.txt`):** Rimozione del pacchetto in conflitto `telegram` e dell'obsoleto `ipaddress`.
+- [x] **Fix 4.1 (`notify_switch.py`):** Gestione sicura con fallback di `PRIMARY_HOSTNAME` e `SECONDARY_HOSTNAME` per evitare `AttributeError` durante lo stop del failover.
+- [x] **Fix 4.2 (`main.py`):** Allineamento del ritorno dell'eccezione in `load_maintenance_data()` (restituire tupla a 4 elementi: `None, {}, False, None`) per prevenire crash di unpack.
+- [x] **Fix 4.3 (`backup.py`):** Inversione dell'ordine: eseguire `mysqldump` **prima** di creare il file compresso `.tar` (come già in `backup_no_transfer.py`).
+- [x] **Fix 4.4 (`update_manager.py`):** Rimuovere il `truncate` preventivo a 0 byte del file selezionato prima dell'avvio di `vi`.
+- [x] **Fix 4.5 (`utils.py`):** Correzione della logica di logging quando viene passato solo `nome_dispositivo` o un messaggio descrittivo senza IP.
+- [x] **Fix 4.7 (`main.py`):** Correzione dell'indice colonna nella modifica dispositivo (`result[1] != nuovo_nome` anziché `result[0]`).
+- [x] **Fix 8.1 (`requirements.txt`):** Rimozione del pacchetto in conflitto `telegram` e dell'obsoleto `ipaddress`.
 
 **Criteri di Accettazione e Test Fase 1:**
 - Esecuzione `python3 notify_switch.py STOP` senza errori.

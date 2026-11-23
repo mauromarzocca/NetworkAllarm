@@ -44,9 +44,11 @@ HEALTH_SERVER_PORT = 8081
 MAX_WORKERS = 10
 
 # Node Identification (Hostname -> Display Name)
+PRIMARY_HOSTNAME = "first_device"
+SECONDARY_HOSTNAME = "second_device"
 NODE_ALIASES = {
-    "first_device": "First Device",
-    "second_device": "Second Device"
+    PRIMARY_HOSTNAME: "First Device",
+    SECONDARY_HOSTNAME: "Second Device"
 }
 
 # Backup Configuration
