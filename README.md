@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.2.0
+Versione : 10.3.0
 
 ![logo](/img/logo.png)
 
@@ -278,6 +278,13 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
     - Hardening SSH Paramiko in [main](./main.py): chiusura garantita della sessione SSH tramite blocco `finally: ssh.close()` per prevenire leak di socket e caricamento chiavi note di sistema (`known_hosts`).
     - Auto-eliminazione immediata dei messaggi Telegram contenenti password inserite durante la procedura di System Advance.
     - Introdotto [config.example.py](./config.example.py) come template tracciato di riferimento e aggiornato [.gitignore](./.gitignore) per la protezione di credenziali, file temporanei e stati locali.
+  - Versione 10.3.0 : Database MySQL Connection Pooling & Async Engine:
+    - Introdotto connection pool MySQL (`MySQLConnectionPool`) e context manager `get_db_cursor` per garantire la chiusura sicura di connessioni e cursori anche in presenza di errori ed eliminare il connection leak.
+    - Ottimizzato il monitoraggio evitando query MySQL ridondanti per ciascun ping su nodi già valutati.
+    - Allineato il ciclo asincrono agli standard `python-telegram-bot` v20+ integrando il task `avvio_monitoraggio` tramite l'hook nativo `post_init`, eliminando deprecazioni di `asyncio.get_event_loop()`.
+    - Ridotto il timer di retention messaggi da 7 giorni a massimo 48 ore in [utils](./utils.py) in conformità con i limiti rigidi delle API Telegram, eliminando l'accumulo di coroutine in memoria.
+    - Riorganizzati i `callback_data` delle tastiere inline sotto i 64 byte con delimitatore non ambiguo `:` per prevenire collisioni con underscore nei nomi e aggiunto il gestore di annullamento per la modifica dispositivo.
+    - Eliminati handler callback non raggiungibili (codice morto), soppresse le doppie notifiche identiche all'amministratore e corretto il testo di conteggio nel report giornaliero.
 
 ---
 

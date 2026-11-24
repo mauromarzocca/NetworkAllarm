@@ -166,6 +166,9 @@ def _scrivi_log_fisico(evento):
         except Exception as e2:
             print(f"Errore critico scrittura buffer locale: {e2}")
 
+# Retention messaggi Telegram: massimo 48 ore (limite rigido API Telegram)
+DEFAULT_MESSAGE_RETENTION = min(getattr(config, 'MESSAGE_RETENTION_SECONDS', 48 * 3600 - 60), 48 * 3600 - 60)
+
 async def invia_messaggio(messaggio, chat_id, reply_markup=None):
     if Bot is None:
         print("Telegram Bot library not installed.")
@@ -174,7 +177,7 @@ async def invia_messaggio(messaggio, chat_id, reply_markup=None):
     try:
         messaggio_inviato = await bot.send_message(chat_id=chat_id, text=messaggio, reply_markup=reply_markup)
         message_id = messaggio_inviato.message_id
-        asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, message_id, 7 * 24 * 60 * 60))
+        asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, message_id, DEFAULT_MESSAGE_RETENTION))
         return message_id
     except Exception as e:
         print(f"Errore durante l'invio del messaggio: {e}")
@@ -189,19 +192,21 @@ async def invia_messaggi_divisi(messaggio, chat_id):
         for i in range(0, len(righe), 10):
             parte = '\n'.join(righe[i:i+10])
             messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte)
-            asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, 7 * 24 * 60 * 60))
+            asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, DEFAULT_MESSAGE_RETENTION))
     except Exception as e:
         print(f"Errore durante l'invio del messaggio: {e}")
 
-async def cancella_messaggio_dopo_delay(chat_id, message_id, delay):
+async def cancella_messaggio_dopo_delay(chat_id, message_id, delay=DEFAULT_MESSAGE_RETENTION):
     if Bot is None:
         return
-    await asyncio.sleep(delay)
+    # Assicura che il delay rispetti il limite massimo di 48 ore delle API Telegram
+    effective_delay = min(delay, 48 * 3600 - 60)
+    await asyncio.sleep(effective_delay)
     bot = Bot(token=config.bot_token)
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
-        print(f"Errore durante la cancellazione del messaggio: {e}")
+        print(f"Errore durante la cancellazione del messaggio {message_id}: {e}")
 
 async def modifica_messaggio(chat_id, messaggio_id, nuovo_testo):
     if Bot is None:

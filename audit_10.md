@@ -311,11 +311,11 @@ flowchart LR
 ### Fase 3 — Release `v10.3.0` (Database MySQL & Async Engine PTB v20+)
 > **Obiettivo:** Ottimizzazione persistenza, assenza di connection leak e allineamento agli standard di `python-telegram-bot` v20+.
 
-- [ ] **Fix 5.1 & 5.2 (MySQL Connection Pooling & Leak):** Introduzione di `MySQLConnectionPool` e uso di context manager `with` per garantire la chiusura delle connessioni anche in errore; eliminazione delle connessioni ripetute per ogni singolo ping.
-- [ ] **Fix 6.1 (AsyncIO Event Loop):** Avvio nativo del task `avvio_monitoraggio()` tramite hook `post_init` di `ApplicationBuilder` in `main.py`, eliminando conflitti e deprecazioni di loop.
-- [ ] **Fix 6.2 (Retention Messaggi Telegram):** Riduzione del timer di cancellazione messaggi da 7 giorni a massimo 48 ore (limite rigido API Telegram) con eliminazione del memory leak di coroutine sospese.
-- [ ] **Fix 4.6 (Callback Telegram compatti):** Riorganizzazione dei `callback_data` sotto i 64 byte e uso di separatori non ambigui per evitare collisioni con underscore nei nomi.
-- [ ] **Fix 6.3, 6.4 & 6.5:** Rimozione handler callback morti, soppressione notifiche duplicate su `chat_id == effective_chat.id` e correzione typo testo report.
+- [x] **Fix 5.1 & 5.2 (MySQL Connection Pooling & Leak):** Introduzione di `MySQLConnectionPool` e uso di context manager `with` per garantire la chiusura delle connessioni anche in errore; eliminazione delle connessioni ripetute per ogni singolo ping.
+- [x] **Fix 6.1 (AsyncIO Event Loop):** Avvio nativo del task `avvio_monitoraggio()` tramite hook `post_init` di `ApplicationBuilder` in `main.py`, eliminando conflitti e deprecazioni di loop.
+- [x] **Fix 6.2 (Retention Messaggi Telegram):** Riduzione del timer di cancellazione messaggi da 7 giorni a massimo 48 ore (limite rigido API Telegram) con eliminazione del memory leak di coroutine sospese.
+- [x] **Fix 4.6 (Callback Telegram compatti):** Riorganizzazione dei `callback_data` sotto i 64 byte e uso di separatori non ambigui per evitare collisioni con underscore nei nomi.
+- [x] **Fix 6.3, 6.4 & 6.5:** Rimozione handler callback morti, soppressione notifiche duplicate su `chat_id == effective_chat.id` e correzione typo testo report.
 
 **Criteri di Accettazione e Test Fase 3:**
 - Monitoraggio attivo per 10 minuti con 10+ nodi senza aumento del numero di connessioni MySQL aperte.
