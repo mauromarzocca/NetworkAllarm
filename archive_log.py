@@ -1,70 +1,111 @@
 import os
 import shutil
-from datetime import datetime
+import sys
 import asyncio
-from telegram import Bot
-import config  # Importa il file di configurazione
-from utils import scrivi_log, invia_messaggio  # Importa le funzioni dal file main.py
+from datetime import datetime
 
-def archivia_directory(mese, anno):
-    # Costruisci il percorso della directory da archiviare
-    cartella_log = os.path.join(os.path.dirname(__file__), 'log', str(anno), f"{mese:02d}")
-    archivio_nome = os.path.join(os.path.dirname(__file__), 'log', str(anno), f"{mese:02d}.zip")
+# Importa configurazione e utilità dal progetto
+import config
+from utils import scrivi_log, invia_messaggio, log_queue, APP_ROOT
 
-    # Liste per i messaggi
-    messaggi_archiviati = []
-    messaggi_rimossi = []
+def get_log_root_dir():
+    """Restituisce il percorso assoluto della cartella dei log."""
+    cartella_log_base = getattr(config, 'cartella_log_base', 'log')
+    if not os.path.isabs(cartella_log_base):
+        return os.path.abspath(os.path.join(APP_ROOT, cartella_log_base))
+    return os.path.abspath(cartella_log_base)
 
-    # Verifica se la directory esiste
+def archivia_cartella_mese(cartella_log, archivio_zip):
+    """Comprime una cartella mensile in un archivio zip e rimuove la cartella originale."""
+    # Se l'archivio non esiste, crea lo zip
+    if not os.path.exists(archivio_zip):
+        archivio_base = archivio_zip[:-4] if archivio_zip.endswith('.zip') else archivio_zip
+        shutil.make_archive(archivio_base, 'zip', cartella_log)
+        print(f"✅ Archiviata directory: {cartella_log} -> {archivio_zip}")
+
+    # Rimuovi la directory sorgente se esiste ancora
     if os.path.exists(cartella_log):
-        # Controlla se l'archivio esiste già
-        if not os.path.exists(archivio_nome):
-            # Archivia la directory
-            shutil.make_archive(archivio_nome[:-4], 'zip', cartella_log)
-            messaggi_archiviati.append(cartella_log)
-            print(f"Archiviata la directory: {cartella_log}")
+        shutil.rmtree(cartella_log)
+        print(f"🗑️ Rimossa directory sorgente: {cartella_log}")
 
-            # Rimuovi la directory dopo l'archiviazione
-            shutil.rmtree(cartella_log)
-            messaggi_rimossi.append(cartella_log)
-            print(f"Directory rimossa: {cartella_log}")
-    # Non fare nulla se la directory non esiste o se l'archivio esiste già
-    return messaggi_archiviati, messaggi_rimossi
-
-
-def archivia_mesi_precedenti():
+async def archivia_mesi_precedenti():
+    """Scansiona la cartella log e archivia tutti i mesi precedenti a quello corrente."""
     oggi = datetime.now()
-    mese_corrente = oggi.month
     anno_corrente = oggi.year
+    mese_corrente = oggi.month
+    log_root = get_log_root_dir()
 
-    # Liste per i messaggi
-    tutti_archiviati = []
-    tutti_rimossi = []
+    if not os.path.exists(log_root):
+        print(f"ℹ️ Cartella log non trovata: {log_root}")
+        return
 
-    # Se il mese corrente è gennaio, archivia dicembre dell'anno precedente
-    if mese_corrente == 1:
-        archiviati, rimossi = archivia_directory(12, anno_corrente - 1)
-        tutti_archiviati.extend(archiviati)
-        tutti_rimossi.extend(rimossi)
-    else:
-        # Archivia i mesi precedenti dell'anno corrente
-        for mese in range(1, mese_corrente):
-            archiviati, rimossi = archivia_directory(mese, anno_corrente)
-            tutti_archiviati.extend(archiviati)
-            tutti_rimossi.extend(rimossi)
+    archiviati = []
+    errori = []
 
-    # Invia messaggi finali tramite Telegram solo se ci sono archiviati o rimossi
-    if tutti_archiviati:
-        messaggio_archiviazione = f"Archiviate: {', '.join(tutti_archiviati)}."
-        asyncio.run(invia_messaggio(messaggio_archiviazione.strip(), config.chat_id))
-        scrivi_log("Archiviazione", messaggio_archiviazione.strip())  # Scrivi nel log
+    try:
+        # Scansiona tutte le cartelle anno (4 cifre numeriche)
+        for entry in sorted(os.listdir(log_root)):
+            anno_dir = os.path.join(log_root, entry)
+            if not (os.path.isdir(anno_dir) and entry.isdigit() and len(entry) == 4):
+                continue
 
-    if tutti_rimossi:
-        messaggio_rimozione = f"Rimosse: {', '.join(tutti_rimossi)}."
-        asyncio.run(invia_messaggio(messaggio_rimozione.strip(), config.chat_id))
-        scrivi_log("Rimozione", messaggio_rimozione.strip())  # Scrivi nel log
+            anno_val = int(entry)
+
+            # Scansiona tutte le cartelle mese (1 o 2 cifre numeriche tra 1 e 12)
+            for sub in sorted(os.listdir(anno_dir)):
+                mese_dir = os.path.join(anno_dir, sub)
+                if not (os.path.isdir(mese_dir) and sub.isdigit()):
+                    continue
+
+                mese_val = int(sub)
+                if not (1 <= mese_val <= 12):
+                    continue
+
+                # Verifica se il mese appartiene al passato rispetto a oggi
+                if (anno_val, mese_val) < (anno_corrente, mese_corrente):
+                    etichetta = f"{anno_val}/{mese_val:02d}"
+                    archivio_zip = os.path.join(anno_dir, f"{mese_val:02d}.zip")
+                    try:
+                        archivia_cartella_mese(mese_dir, archivio_zip)
+                        archiviati.append(etichetta)
+                    except Exception as err:
+                        msg_err = f"Errore su {etichetta}: {err}"
+                        print(f"❌ {msg_err}")
+                        errori.append(msg_err)
+
+        # Notifica e log riepilogativi
+        if archiviati:
+            messaggio = (
+                f"📦 *Archiviazione Log Completata*\n"
+                f"Archiviati e compressi con successo {len(archiviati)} mesi passati:\n"
+                f"`{', '.join(archiviati)}`"
+            )
+            chat_id = getattr(config, 'chat_id', None)
+            if chat_id:
+                await invia_messaggio(messaggio, chat_id)
+            scrivi_log(f"Archiviazione completata ({len(archiviati)} mesi)", nome_dispositivo="Cron", indirizzo_ip="127.0.0.1")
+
+        if errori:
+            messaggio_err = (
+                f"⚠️ *Avvisi Archiviazione Log*\n"
+                f"Si sono verificati {len(errori)} errori:\n" + "\n".join(errori)
+            )
+            chat_id = getattr(config, 'chat_id', None)
+            if chat_id:
+                await invia_messaggio(messaggio_err, chat_id)
+            scrivi_log("Errore archiviazione log", nome_dispositivo="Cron", indirizzo_ip="127.0.0.1")
+
+    except Exception as e:
+        errore_globale = f"❌ Errore critico durante l'archiviazione log: {e}"
+        print(errore_globale)
+        chat_id = getattr(config, 'chat_id', None)
+        if chat_id:
+            await invia_messaggio(errore_globale, chat_id)
+        scrivi_log("Errore critico archiviazione log", nome_dispositivo="Cron", indirizzo_ip="127.0.0.1")
+    finally:
+        log_queue.join()
 
 if __name__ == "__main__":
-    print("Inizio dell'esecuzione di archive_log.py")
-    archivia_mesi_precedenti()
-    print("Fine dell'esecuzione di archive_log.py")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Inizio esecuzione archive_log.py")
+    asyncio.run(archivia_mesi_precedenti())
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Fine esecuzione archive_log.py")

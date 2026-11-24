@@ -270,6 +270,7 @@ flowchart LR
     R2 --> R3["Fase 3: v10.3.0<br/>(Database & Async Engine)"]
     R3 --> R4["Fase 4: v10.4.0<br/>(HA, Failover & Systemd)"]
     R4 --> R5["Fase 5: v10.5.0<br/>(Refactoring & Docs)"]
+    R5 --> R6["Fase 6: v10.6.0<br/>(Pulizia & Consolidamento)"]
 ```
 
 ---
@@ -346,6 +347,20 @@ flowchart LR
 - [x] **Fix 8.2 (Pulizia AppleDouble):** Rimozione definitiva di tutti i file `._*` e risoluzione totale del warning Git sull'indice dei pack (`non-monotonic index`).
 - [x] **Fix 8.3 (`.gitignore` completo):** Esclusione strutturata di `*.bak`, `*.backup`, `*.sql`, `*.tar`, `*.gz`, `stato/*`, `log/*`, `__pycache__`, editor config (`.vscode/`, `.idea/`) e `._*`.
 - [x] **Fix 8.4 (Changelog & Contributing):** Compilazione dettagliata di `CHANGELOG.md` per le versioni 9 e 10 (con tutte le sotto-release da 10.1.1 a 10.5.0) e stesura completa delle linee guida per i contributori in `CONTRIBUTING.md`.
+
+---
+
+### Fase 6 — Release `v10.6.0` (Pulizia e Consolidamento Repository)
+> **Obiettivo:** Rimozione dei file obsoleti e impropri per Git, consolidamento degli script duplicati e modernizzazione di `archive_log.py` per l'esecuzione in cron.
+
+- [x] **Rimozione `log/__init__.py` & Adozione `log/.gitkeep`:** Eliminazione del file che trattava la cartella dei log come modulo Python, prevenendo collisioni di namespace e conflitti durante i checkout Git.
+- [x] **Eliminazione Asset Obsoleti in `img/`:** Rimozione di 5 screenshot storici non più referenziati da documentazione o codice, risparmiando oltre 1.2 MB nel repository.
+- [x] **Consolidamento `backup_no_transfer.py` in `backup.py`:** Unificazione degli script di backup con supporto condizionale al trasferimento remoto via SCP tramite flag CLI (`--local` / `--no-transfer`) o variabili d'ambiente.
+- [x] **Modernizzazione `archive_log.py` (Opzione A):** Scansione dinamica e robusta di tutte le directory mensili passate, percorsi assoluti centralizzati da `config.py`, invio di notifica Telegram consolidata e flush sincrono della coda di logging prima della terminazione.
+- [x] **Disaccoppiamento di `restore.py`:** Incapsulamento dell'interfaccia interattiva nel blocco `if __name__ == '__main__'`, eliminando l'esecuzione immediata di codice al momento dell'import.
+- [x] **Allineamento `update_manager.py`:** Rimozione di `backup_no_transfer.py` dalla lista `TRACKED_FILES` per sincronizzare il gestore degli aggiornamenti con l'albero effettivo dei file.
+- [x] **Release `v10.6.1` (Tolleranza Rete & Ping Multi-Pacchetto):** Incremento a 3 pacchetti ICMP (`-c 3`) con timeout esplicito (`-W 1`) e fallback automatico configurabile (`PING_COUNT`, `PING_TIMEOUT`) per azzerare i falsi allarmi su nodi con EEE e telecamere Wi-Fi IoT.
+- [x] **Release `v10.6.2` (Automazione Requisiti Update Manager):** Verifica automatica e non interattiva delle dipendenze da `requirements.txt`: se già soddisfatte, l'aggiornamento procede direttamente senza richiedere conferme all'utente.
 
 ---
 

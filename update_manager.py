@@ -27,7 +27,6 @@ TRACKED_FILES = [
     "failover-monitor.py",
     "archive_log.py",
     "backup.py",
-    "backup_no_transfer.py",
     "restore.py",
     "setup.py",
     "requirements.txt",
@@ -62,6 +61,94 @@ def backup_file(filepath):
         print(f"   [Backup] Created: {backup_path}")
         return backup_path
     return None
+
+def check_requirements_satisfied(requirements_file="requirements.txt"):
+    """
+    Verifica se tutti i pacchetti elencati in requirements.txt sono già installati nel sistema.
+    Restituisce (True, []) se tutti i requisiti sono presenti,
+    oppure (False, [mancanti]) se mancano o non sono conformi.
+    """
+    if not os.path.exists(requirements_file):
+        return True, []
+
+    missing = []
+    try:
+        import importlib.metadata as importlib_metadata
+    except ImportError:
+        return False, ["Modulo importlib.metadata non disponibile per verifica automatica"]
+
+    try:
+        with open(requirements_file, 'r') as f:
+            lines = f.readlines()
+    except Exception as e:
+        return False, [f"Errore lettura {requirements_file}: {e}"]
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+
+        op = None
+        req_ver = None
+        for operator in ['==', '>=', '<=', '>', '<', '~=']:
+            if operator in line:
+                op = operator
+                pkg_name, req_ver = line.split(operator, 1)
+                pkg_name = pkg_name.strip()
+                req_ver = req_ver.strip()
+                break
+        else:
+            pkg_name = line.strip()
+
+        norm_name = pkg_name.lower().replace('_', '-')
+
+        try:
+            installed_ver = importlib_metadata.version(norm_name)
+        except importlib_metadata.PackageNotFoundError:
+            try:
+                installed_ver = importlib_metadata.version(pkg_name)
+            except importlib_metadata.PackageNotFoundError:
+                missing.append(f"{pkg_name} (non installato)")
+                continue
+
+        if op == '==' and req_ver:
+            if installed_ver != req_ver:
+                missing.append(f"{pkg_name} (installata {installed_ver}, richiesta {req_ver})")
+        elif op == '>=' and req_ver:
+            try:
+                inst_tuple = tuple(int(x) for x in installed_ver.split('.') if x.isdigit())
+                req_tuple = tuple(int(x) for x in req_ver.split('.') if x.isdigit())
+                if inst_tuple < req_tuple:
+                    missing.append(f"{pkg_name} (installata {installed_ver} < {req_ver})")
+            except Exception:
+                pass
+
+    return len(missing) == 0, missing
+
+def ensure_requirements_installed(requirements_file="requirements.txt"):
+    """
+    Controlla automaticamente le dipendenze da requirements.txt:
+    se sono già tutte installate, non richiede nulla all'utente né esegue pip;
+    se ne manca qualcuna, procede all'installazione automatica.
+    """
+    if not os.path.exists(requirements_file):
+        return
+
+    print(f"\nVerifica automatica delle dipendenze da {requirements_file}...")
+    satisfied, missing = check_requirements_satisfied(requirements_file)
+
+    if satisfied:
+        print("   [Dipendenze] Tutte le dipendenze Python sono già installate e soddisfatte.")
+    else:
+        print(f"   [Dipendenze] Rilevate {len(missing)} dipendenze mancanti o non conformi:")
+        for m in missing:
+            print(f"      - {m}")
+        print("   Installazione automatica delle dipendenze in corso...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_file])
+            print("   [Dipendenze] Dipendenze Python installate con successo.")
+        except Exception as pe:
+            print(f"   [Errore] Errore durante l'installazione delle dipendenze: {pe}")
 
 def merge_config(local_path, remote_content):
     """
@@ -434,15 +521,8 @@ def update_via_git():
                 example_content = f.read()
             merge_config("config.py", example_content)
 
-        # Controllo dipendenze Python
-        if os.path.exists("requirements.txt"):
-            ans = input("\nVuoi verificare/aggiornare le dipendenze Python da requirements.txt? (s/n): ").strip().lower()
-            if ans in ['s', 'y', 'si']:
-                try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
-                    print("Dipendenze verificate.")
-                except Exception as pe:
-                    print(f"Errore aggiornamento dipendenze: {pe}")
+        # Controllo automatico dipendenze Python (nessuna richiesta interattiva se già soddisfatte)
+        ensure_requirements_installed("requirements.txt")
 
         create_update_flag()
 
@@ -512,6 +592,7 @@ def update_from_github():
         except Exception as e:
             print(f"   [Error] Failed to fetch {filename}: {e}")
 
+    ensure_requirements_installed("requirements.txt")
     create_update_flag()
 
     if is_service_active():

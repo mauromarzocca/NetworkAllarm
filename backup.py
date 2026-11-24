@@ -9,30 +9,28 @@ import asyncio
 # Importa le configurazioni dal progetto
 import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from utils import invia_messaggio, scrivi_log, mysql_temp_config
+from utils import invia_messaggio, scrivi_log, mysql_temp_config, log_queue
 
-# Configurazione base
-project_name = config.PROJECT_NAME
-backup_dir_name = config.BACKUP_DIR_NAME
-remote_host = config.BACKUP_REMOTE_HOST
-remote_path = config.BACKUP_REMOTE_PATH
+# Configurazione base centralizzata con fallback
+project_name = getattr(config, 'PROJECT_NAME', 'NetworkAllarm')
+backup_dir_name = getattr(config, 'BACKUP_DIR_NAME', 'Backup NetworkAllarm')
+remote_host = getattr(config, 'BACKUP_REMOTE_HOST', None)
+remote_path = getattr(config, 'BACKUP_REMOTE_PATH', None)
 
 # Percorsi
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.abspath(os.path.join(script_dir, "..", project_name))
 backup_dir = os.path.abspath(os.path.join(script_dir, "..", backup_dir_name))
 
-# Creazione cartella di backup se non esiste
-if not os.path.exists(backup_dir):
-    os.makedirs(backup_dir)
-
 # Nome del backup con data
 backup_filename = f"{project_name}_{datetime.datetime.now().strftime('%Y%m%d')}.tar"
 backup_filepath = os.path.join(backup_dir, backup_filename)
 
-# Funzione per eseguire il backup
+# Funzione per eseguire il backup locale (database + directory)
 async def esegui_backup():
     try:
+        # Creazione cartella di backup se non esiste
+        os.makedirs(backup_dir, exist_ok=True)
         # Verifica preventiva presenza di mysqldump
         if not shutil.which("mysqldump"):
             raise FileNotFoundError("Comando 'mysqldump' non trovato nel sistema. Installa 'default-mysql-client' o 'mariadb-client'.")
@@ -63,16 +61,16 @@ async def esegui_backup():
         # Messaggio di backup riuscito
         messaggio_backup = f"✅ Backup completato con successo.\nFile: {backup_filename}"
         await invia_messaggio(messaggio_backup, chat_id)
-        scrivi_log("Backup completato")
+        scrivi_log("Backup completato", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
 
-        return True  # Backup riuscito
+        return True
 
     except Exception as e:
         messaggio_errore = f"❌ Errore durante il backup: {e}"
         print(messaggio_errore)
         await invia_messaggio(messaggio_errore, chat_id)
-        scrivi_log("Errore Backup")
-        return False  # Backup fallito
+        scrivi_log("Errore Backup", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
+        return False
 
 # Funzione per il trasferimento via SCP
 async def trasferisci_backup():
@@ -87,19 +85,36 @@ async def trasferisci_backup():
         # Scrittura nel log e invio messaggio
         messaggio = "✅ Trasferimento backup completato con successo."
         await invia_messaggio(messaggio, chat_id)
-        scrivi_log("Trasferimento completato")
+        scrivi_log("Trasferimento completato", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
+        return True
 
     except subprocess.CalledProcessError as e:
         errore_msg = f"❌ Errore nel trasferimento: {e}"
         print(errore_msg)
         await invia_messaggio(errore_msg, chat_id)
-        scrivi_log("Errore nel trasferimento")
+        scrivi_log("Errore nel trasferimento", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
+        return False
 
-# Esegue il backup e, se riesce, avvia il trasferimento
+# Esegue il backup e, se configurato, avvia il trasferimento
 async def main():
+    skip_transfer = "--local" in sys.argv or "--no-transfer" in sys.argv
     backup_success = await esegui_backup()
-    if backup_success:
-        await trasferisci_backup()
 
-# Esegui il processo completo
-asyncio.run(main())
+    if not backup_success:
+        log_queue.join()
+        sys.exit(1)
+
+    if remote_host and remote_path and not skip_transfer:
+        transfer_success = await trasferisci_backup()
+        log_queue.join()
+        if not transfer_success:
+            sys.exit(1)
+    else:
+        if skip_transfer:
+            print("ℹ️ Trasferimento remoto saltato (flag --local / --no-transfer attivo).")
+        else:
+            print("ℹ️ Trasferimento remoto non configurato (BACKUP_REMOTE_HOST o BACKUP_REMOTE_PATH assente).")
+        log_queue.join()
+
+if __name__ == "__main__":
+    asyncio.run(main())

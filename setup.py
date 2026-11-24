@@ -194,6 +194,10 @@ HEALTH_SERVER_PORT = 8081
 # Threading
 MAX_WORKERS = 10
 
+# Network Ping Settings
+PING_COUNT = 3
+PING_TIMEOUT = 1
+
 # Node Identification
 PRIMARY_HOSTNAME = "{primary_hostname}"
 SECONDARY_HOSTNAME = "{secondary_hostname}"

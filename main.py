@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.5.0"
+version = "10.6.2"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -337,13 +337,22 @@ def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
 
 # Funzione sincrona per eseguire il ping (bloccante)
 def _esegui_ping_sync(indirizzo):
-    comando_ping = ['ping', '-c', '1', indirizzo]
+    # Parametri configurabili con default robusti per tolleranza IoT / Wi-Fi / EEE
+    ping_count = str(getattr(config, 'PING_COUNT', 3))
+    ping_timeout = str(getattr(config, 'PING_TIMEOUT', 1))
+
+    comando_ping = ['ping', '-c', ping_count, '-W', ping_timeout, indirizzo]
+    safety_timeout = int(ping_count) * int(ping_timeout) + 2
+
     try:
-        output = subprocess.check_output(comando_ping, stderr=subprocess.STDOUT)
+        output = subprocess.check_output(comando_ping, stderr=subprocess.STDOUT, timeout=safety_timeout)
         print(f"Ping riuscito per {indirizzo}:\n{output.decode()}")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Ping fallito per {indirizzo}:\n{e.output.decode()}")
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"Ping scaduto (timeout {safety_timeout}s) per {indirizzo}")
         return False
     except Exception as e:
         print(f"Errore durante il ping per {indirizzo}: {e}")

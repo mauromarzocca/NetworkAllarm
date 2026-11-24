@@ -145,3 +145,18 @@
   - Consolidamento ed estensione di [.gitignore](./.gitignore) con esclusione strutturata di backup (`*.bak`, `*.backup`), dump SQL (`*.sql`), archivi (`*.tar`), file di stato e log.
   - Redazione completa delle linee guida per i contributori in [CONTRIBUTING.md](./CONTRIBUTING.md) (workflow branch, convenzioni di commit semantiche, standard di codice, procedure di testing e gestione configurazioni sicure).
   - Allineamento e sincronizzazione esaustiva di [CHANGELOG.md](./CHANGELOG.md) per tutte le versioni 9 e 10.
+- Versione 10.6.0 : Pulizia e Consolidamento Repository:
+  - Eliminazione del file improprio `log/__init__.py` da Git, sostituito dalla convenzione standard `log/.gitkeep` per prevenire conflitti durante i cambi di branch e collisioni di namespace con la libreria standard `logging`.
+  - Rimozione di screenshot e asset grafici obsoleti non referenziati in `img/` per oltre 1.2 MB di spazio risparmiato.
+  - Consolidamento di `backup_no_transfer.py` all'interno di [backup](./backup.py): supporto unificato per backup locale e remoto tramite flag CLI (`--local` / `--no-transfer`) o rilevamento configurazione `BACKUP_REMOTE_HOST`.
+  - Modernizzazione e blindatura di [archive_log](./archive_log.py): scansione dinamica di tutte le cartelle mensili passate, percorsi assoluti da configurazione centralizzata, notifica Telegram consolidata e scrittura sincrona dei log con flush della coda.
+  - Rifattorizzazione di [restore](./restore.py): incapsulamento dell'interfaccia interattiva nel blocco `if __name__ == '__main__'`, eliminando l'esecuzione immediata di codice al momento dell'import.
+  - Aggiornamento della lista `TRACKED_FILES` in [Update_Manager](./update_manager.py) rimuovendo i riferimenti a script duplicati o configurazioni private locali.
+- Versione 10.6.1 : Tolleranza Rete & Monitoraggio Ping Multi-Pacchetto:
+  - Incrementato il ping ICMP da 1 a 3 pacchetti (`-c 3`) con timeout esplicito (`-W 1`) in [main](./main.py), eliminando i falsi positivi di disconnessione causati da risveglio schede di rete (EEE / Low Power Idle) e risparmio energetico Wi-Fi IoT (DTIM sleep su telecamere Tapo).
+  - Parametrizzazione centralizzata in [config.example](./config.example.py) e [setup](./setup.py) tramite `PING_COUNT` e `PING_TIMEOUT`, con fallback predefinito a 3 pacchetti e 1 secondo.
+  - Aggiunta protezione con timeout Python (`TimeoutExpired`) su `subprocess.check_output` per prevenire il blocco indefinito dei thread di monitoraggio.
+- Versione 10.6.2 : Automazione Verifica Requisiti in Update Manager:
+  - Implementata la verifica automatica e non interattiva delle dipendenze da `requirements.txt` in [Update_Manager](./update_manager.py) tramite `importlib.metadata`.
+  - Se tutti i requisiti sono già soddisfatti, l'aggiornamento procede direttamente senza richiedere conferme all'utente e senza invocare inutilmente `pip install`.
+  - In caso di dipendenze mancanti o non conformi, l'installazione viene eseguita in automatico segnalando i singoli pacchetti aggiornati.

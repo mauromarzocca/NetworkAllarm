@@ -40,6 +40,10 @@ HEALTH_SERVER_PORT = 8081
 # Threading executor per task bloccanti
 MAX_WORKERS = 10
 
+# Impostazioni Ping e Tolleranza di Rete (Wi-Fi, IoT, EEE)
+PING_COUNT = 3      # Numero di pacchetti ICMP inviati (default: 3, ideale per tollerare sleep IoT ed EEE)
+PING_TIMEOUT = 1    # Timeout in secondi per ciascun pacchetto inviato
+
 # Identificazione Nodi (Hostname -> Nome visualizzato)
 PRIMARY_HOSTNAME = "first_device"
 SECONDARY_HOSTNAME = "second_device"
