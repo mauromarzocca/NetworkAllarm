@@ -377,13 +377,33 @@ def update_via_git():
             print(f"Passaggio al branch {selected_branch}...")
             local_branches = subprocess.check_output(["git", "branch"], text=True).split()
             local_branches = [b.replace("*", "").strip() for b in local_branches]
-            if selected_branch in local_branches:
-                subprocess.check_call(["git", "checkout", selected_branch])
-            else:
-                subprocess.check_call(["git", "checkout", "-b", selected_branch, f"origin/{selected_branch}"])
+
+            is_existing_local = selected_branch in local_branches
+            checkout_cmd = ["git", "checkout", selected_branch] if is_existing_local else ["git", "checkout", "-b", selected_branch, f"origin/{selected_branch}"]
+
+            try:
+                subprocess.check_call(checkout_cmd)
+            except subprocess.CalledProcessError:
+                print("\n⚠️ Rilevati file non tracciati locali che andrebbero sovrascritti dal branch.")
+                ans = input("Vuoi forzare il passaggio al branch sovrascrivendo i file non tracciati in conflitto? (s/n): ").strip().lower()
+                if ans in ['s', 'y', 'si']:
+                    force_cmd = ["git", "checkout", "-f", selected_branch] if is_existing_local else ["git", "checkout", "-f", "-B", selected_branch, f"origin/{selected_branch}"]
+                    subprocess.check_call(force_cmd)
+                else:
+                    print("Aggiornamento annullato per preservare i file locali.")
+                    return
 
         print(f"Aggiornamento codice ('git pull origin {selected_branch}')...")
-        subprocess.check_call(["git", "pull", "origin", selected_branch])
+        try:
+            subprocess.check_call(["git", "pull", "origin", selected_branch])
+        except subprocess.CalledProcessError:
+            print("\n⚠️ Conflitto durante il pull con modifiche locali.")
+            ans = input("Vuoi allineare forzatamente il codice con il branch remoto ('git reset --hard')? (s/n): ").strip().lower()
+            if ans in ['s', 'y', 'si']:
+                subprocess.check_call(["git", "reset", "--hard", f"origin/{selected_branch}"])
+            else:
+                print("Aggiornamento annullato.")
+                return
         print("Codice aggiornato con successo.")
 
         # Merge automatico nuove opzioni da config.example.py
