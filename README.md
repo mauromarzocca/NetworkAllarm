@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.6.0
+Versione : 10.6.1
 
 ![logo](/img/logo.png)
 
@@ -301,6 +301,9 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
     - Consolidamento di `backup_no_transfer.py` in [backup](./backup.py) con supporto unificato per backup locale o remoto via SCP.
     - Modernizzazione di [archive_log](./archive_log.py) per esecuzione tramite cron: scansione dinamica di tutte le cartelle passate, percorsi assoluti e notifica consolidata.
     - Rifattorizzazione sicura di [restore](./restore.py) e allineamento di [Update_Manager](./update_manager.py).
+  - Versione 10.6.1 : Tolleranza Rete & Monitoraggio Ping Multi-Pacchetto:
+    - Incrementato il ping ICMP a 3 pacchetti con timeout esplicito (`-W 1`) per eliminare falsi allarmi su nodi con Energy Efficient Ethernet (EEE) e telecamere Wi-Fi IoT.
+    - Parametrizzazione centralizzata tramite `PING_COUNT` e `PING_TIMEOUT` in configurazione con fallback sicuri.
 
 ---
 

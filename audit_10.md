@@ -359,6 +359,7 @@ flowchart LR
 - [x] **Modernizzazione `archive_log.py` (Opzione A):** Scansione dinamica e robusta di tutte le directory mensili passate, percorsi assoluti centralizzati da `config.py`, invio di notifica Telegram consolidata e flush sincrono della coda di logging prima della terminazione.
 - [x] **Disaccoppiamento di `restore.py`:** Incapsulamento dell'interfaccia interattiva nel blocco `if __name__ == '__main__'`, eliminando l'esecuzione immediata di codice al momento dell'import.
 - [x] **Allineamento `update_manager.py`:** Rimozione di `backup_no_transfer.py` dalla lista `TRACKED_FILES` per sincronizzare il gestore degli aggiornamenti con l'albero effettivo dei file.
+- [x] **Release `v10.6.1` (Tolleranza Rete & Ping Multi-Pacchetto):** Incremento a 3 pacchetti ICMP (`-c 3`) con timeout esplicito (`-W 1`) e fallback automatico configurabile (`PING_COUNT`, `PING_TIMEOUT`) per azzerare i falsi allarmi su nodi con EEE e telecamere Wi-Fi IoT.
 
 ---
 

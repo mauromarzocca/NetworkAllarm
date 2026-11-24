@@ -152,3 +152,7 @@
   - Modernizzazione e blindatura di [archive_log](./archive_log.py): scansione dinamica di tutte le cartelle mensili passate, percorsi assoluti da configurazione centralizzata, notifica Telegram consolidata e scrittura sincrona dei log con flush della coda.
   - Rifattorizzazione di [restore](./restore.py): incapsulamento dell'interfaccia interattiva nel blocco `if __name__ == '__main__'`, eliminando l'esecuzione immediata di codice al momento dell'import.
   - Aggiornamento della lista `TRACKED_FILES` in [Update_Manager](./update_manager.py) rimuovendo i riferimenti a script duplicati o configurazioni private locali.
+- Versione 10.6.1 : Tolleranza Rete & Monitoraggio Ping Multi-Pacchetto:
+  - Incrementato il ping ICMP da 1 a 3 pacchetti (`-c 3`) con timeout esplicito (`-W 1`) in [main](./main.py), eliminando i falsi positivi di disconnessione causati da risveglio schede di rete (EEE / Low Power Idle) e risparmio energetico Wi-Fi IoT (DTIM sleep su telecamere Tapo).
+  - Parametrizzazione centralizzata in [config.example](./config.example.py) e [setup](./setup.py) tramite `PING_COUNT` e `PING_TIMEOUT`, con fallback predefinito a 3 pacchetti e 1 secondo.
+  - Aggiunta protezione con timeout Python (`TimeoutExpired`) su `subprocess.check_output` per prevenire il blocco indefinito dei thread di monitoraggio.
