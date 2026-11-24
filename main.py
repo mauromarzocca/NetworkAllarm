@@ -1,5 +1,6 @@
 import subprocess
 import asyncio
+import time
 import os
 import sys
 from functools import wraps
@@ -25,30 +26,16 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.3.0"
+version = "10.4.0"
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-def start_health_server():
-    # Ascolta su TUTTE le interfacce di rete
-    server = HTTPServer(('0.0.0.0', config.HEALTH_SERVER_PORT), HealthHandler)
-    server.serve_forever()
+# Timestamp per health check dinamico del loop di monitoraggio
+last_monitor_heartbeat = time.time()
+_health_startup_time = time.time()
 
 # Funzione per determinare il nodo corrente
 def get_nodo_corrente():
     hostname = socket.gethostname()
     return config.NODE_ALIASES.get(hostname, hostname)
-
-# Avvia in un thread separato (all'inizio del programma, dopo gli import)
-threading.Thread(target=start_health_server, daemon=True).start()
 
 DB_HOST = config.DB_HOST
 DB_NAME = config.DB_NAME
@@ -115,6 +102,80 @@ def get_db_cursor(commit=False):
                 cnx.commit()
         finally:
             cursor.close()
+
+def check_system_health():
+    """
+    Verifica dinamica dello stato di salute del sistema:
+    1. Raggiungibilità del database MySQL (SELECT 1 tramite connection pool)
+    2. Vitalità del loop di monitoraggio (heartbeat recente)
+    Ritorna: (is_healthy: bool, details: dict)
+    """
+    db_ok = False
+    db_error = None
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            db_ok = True
+    except Exception as e:
+        db_error = str(e)
+
+    monitor_ok = False
+    now = time.time()
+    time_since_heartbeat = now - last_monitor_heartbeat
+    time_since_startup = now - _health_startup_time
+    # Finestra di tolleranza: 3 volte l'intervallo di controllo (minimo 180s)
+    max_stall = max(getattr(config, 'intervallo_controllo', 60) * 3, 180)
+
+    # Durante i primi 120 secondi dall'avvio diamo un grace period al loop di inizializzazione
+    if time_since_startup < 120 or time_since_heartbeat <= max_stall:
+        monitor_ok = True
+
+    is_healthy = db_ok and monitor_ok
+    details = {
+        "status": "OK" if is_healthy else "UNHEALTHY",
+        "version": version,
+        "node": get_nodo_corrente(),
+        "database": "connected" if db_ok else f"error: {db_error}",
+        "monitoring": "active" if monitor_ok else f"stalled ({int(time_since_heartbeat)}s ago)",
+        "timestamp": datetime.now().isoformat()
+    }
+    return is_healthy, details
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            try:
+                is_healthy, details = check_system_health()
+                status_code = 200 if is_healthy else 503
+                body = json.dumps(details).encode('utf-8')
+                self.send_response(status_code)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status": "ERROR"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        # Silenzia il log degli health check periodici per non inquinare la console/journal
+        pass
+
+def start_health_server():
+    try:
+        server = HTTPServer(('0.0.0.0', config.HEALTH_SERVER_PORT), HealthHandler)
+        server.serve_forever()
+    except Exception as e:
+        print(f"Errore avvio server health check su porta {config.HEALTH_SERVER_PORT}: {e}")
+
+# Avvia server health check su thread daemon
+threading.Thread(target=start_health_server, daemon=True).start()
 
 def get_device_name_by_ip(ip):
     try:
@@ -1523,7 +1584,7 @@ async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
 
 async def monitoraggio():
-    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date, manutenzione_reason
+    global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date, manutenzione_reason, last_monitor_heartbeat
     tutti_offline = False
     stato_precedente_connessioni = {}
     ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
@@ -1535,6 +1596,7 @@ async def monitoraggio():
 
     while True:
         try:
+            last_monitor_heartbeat = time.time()
             # Sincronizzazione stato manutenzione da file (per modifiche esterne/Ansible)
             ext_global_expiry, ext_indiv_expiries, ext_global_manual, ext_reason = load_maintenance_data()
 

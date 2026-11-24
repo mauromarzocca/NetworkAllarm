@@ -157,9 +157,9 @@ def merge_config(local_path, remote_content):
 def get_service_name():
     """
     Detects the installed service name (case-insensitive check).
-    Returns 'NetworkAllarm.service' or 'networkallarm.service'.
+    Returns 'networkallarm.service' or 'NetworkAllarm.service'.
     """
-    candidates = ["NetworkAllarm.service", "networkallarm.service"]
+    candidates = ["networkallarm.service", "NetworkAllarm.service"]
 
     # 1. Check for active service
     for name in candidates:
@@ -307,7 +307,121 @@ def get_github_branches():
         print(f"   [Error] Could not fetch branches: {e}")
         return []
 
+def update_via_git():
+    """Aggiornamento sicuro del repository tramite comandi nativi Git."""
+    print("\n--- Aggiornamento tramite Git ---")
+    try:
+        print("Sincronizzazione riferimenti remoti (git fetch)...")
+        subprocess.check_call(["git", "fetch", "--all", "--prune", "--tags"])
+
+        # Recupera branch remoti disponibili
+        output = subprocess.check_output(["git", "branch", "-r"], text=True)
+        remote_branches = []
+        for line in output.splitlines():
+            line = line.strip()
+            if "->" in line:
+                continue
+            if line.startswith("origin/"):
+                remote_branches.append(line.replace("origin/", ""))
+
+        if not remote_branches:
+            remote_branches = ["main"]
+
+        if "main" in remote_branches:
+            remote_branches.remove("main")
+            remote_branches.insert(0, "main")
+
+        print("\nBranch disponibili:")
+        for idx, b in enumerate(remote_branches):
+            print(f"{idx + 1}. {b}")
+        print("0. Annulla")
+
+        choice = input("\nSeleziona branch: ").strip()
+        if choice == '0':
+            print("Operazione annullata.")
+            return
+
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(remote_branches):
+                selected_branch = remote_branches[idx]
+            else:
+                selected_branch = "main"
+        except ValueError:
+            selected_branch = "main"
+
+        print(f"\nProcedo con l'aggiornamento dal branch: {selected_branch}")
+
+        # Verifica stato locale
+        status_output = subprocess.check_output(["git", "status", "--porcelain"], text=True)
+        dirty_lines = [l for l in status_output.splitlines() if not l.strip().endswith("config.py") and not l.strip().startswith("??")]
+
+        if dirty_lines:
+            print("\n⚠️ Rilevate modifiche locali non committate:")
+            for l in dirty_lines[:5]:
+                print(f"   {l}")
+            ans = input("Vuoi archiviare le modifiche locali con 'git stash' prima dell'aggiornamento? (s/n): ").strip().lower()
+            if ans in ['s', 'y', 'si']:
+                subprocess.check_call(["git", "stash"])
+            else:
+                print("Aggiornamento annullato per evitare conflitti con modifiche locali.")
+                return
+
+        # Backup preventivo di config.py
+        if os.path.exists("config.py"):
+            backup_file("config.py")
+
+        # Checkout e Pull
+        current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True).strip()
+        if current_branch != selected_branch:
+            print(f"Passaggio al branch {selected_branch}...")
+            local_branches = subprocess.check_output(["git", "branch"], text=True).split()
+            local_branches = [b.replace("*", "").strip() for b in local_branches]
+            if selected_branch in local_branches:
+                subprocess.check_call(["git", "checkout", selected_branch])
+            else:
+                subprocess.check_call(["git", "checkout", "-b", selected_branch, f"origin/{selected_branch}"])
+
+        print(f"Aggiornamento codice ('git pull origin {selected_branch}')...")
+        subprocess.check_call(["git", "pull", "origin", selected_branch])
+        print("Codice aggiornato con successo.")
+
+        # Merge automatico nuove opzioni da config.example.py
+        if os.path.exists("config.example.py") and os.path.exists("config.py"):
+            print("\nVerifica nuove opzioni di configurazione da config.example.py...")
+            with open("config.example.py", "r") as f:
+                example_content = f.read()
+            merge_config("config.py", example_content)
+
+        # Controllo dipendenze Python
+        if os.path.exists("requirements.txt"):
+            ans = input("\nVuoi verificare/aggiornare le dipendenze Python da requirements.txt? (s/n): ").strip().lower()
+            if ans in ['s', 'y', 'si']:
+                try:
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+                    print("Dipendenze verificate.")
+                except Exception as pe:
+                    print(f"Errore aggiornamento dipendenze: {pe}")
+
+        create_update_flag()
+
+        if is_service_active():
+            print(f"\n   [Service] {get_service_name()} è attualmente attivo.")
+            if input("   Vuoi riavviare il servizio per applicare le modifiche? (s/n): ").strip().lower() in ['s', 'y', 'si']:
+                restart_service()
+
+    except Exception as e:
+        print(f"\n[Errore] Aggiornamento Git non riuscito: {e}")
+        input("Premi Invio per continuare...")
+
 def update_from_github():
+    # Se il repository Git è presente sul server, usa l'aggiornamento nativo Git
+    if os.path.isdir(".git") and shutil.which("git"):
+        update_via_git()
+        return
+
+    # Fallback su download HTTP per installazioni prive di directory .git
+    print("\n[Modalità HTTP] .git non trovato. Utilizzo download diretto dei singoli file.")
     branches = get_github_branches()
 
     if not branches:
@@ -357,12 +471,8 @@ def update_from_github():
         except Exception as e:
             print(f"   [Error] Failed to fetch {filename}: {e}")
 
-    # Create flag after updates (assuming updates happened if we got here without error,
-    # though strictly we might want to track if any file actually changed.
-    # For GitHub update, we assume something might have changed if we downloaded files.)
     create_update_flag()
 
-    # Ask for restart if service is active
     if is_service_active():
         print(f"\n   [Service] {get_service_name()} is currently active.")
         if input("   Restart service now to apply changes? (y/n): ").strip().lower() == 'y':
