@@ -8,57 +8,19 @@ import shutil
 # Importiamo le configurazioni e le funzioni dal progetto
 import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
-from utils import invia_messaggio, scrivi_log, mysql_temp_config
+from utils import invia_messaggio, scrivi_log, mysql_temp_config, log_queue
 
-# Configurazione
-project_name = "NetworkAllarm"
-backup_dir_name = "Backup NetworkAllarm"
+# Configurazione base centralizzata con fallback
+project_name = getattr(config, 'PROJECT_NAME', 'NetworkAllarm')
+backup_dir_name = getattr(config, 'BACKUP_DIR_NAME', 'Backup NetworkAllarm')
 
 # Percorsi
 script_dir = os.path.dirname(os.path.abspath(__file__))
 backup_dir = os.path.abspath(os.path.join(script_dir, "..", backup_dir_name))
 project_dir = os.path.abspath(os.path.join(script_dir, "..", project_name))
 
-# Verifica se esiste la cartella di backup
-if not os.path.exists(backup_dir):
-    print("❌ La cartella di backup non esiste!")
-    sys.exit(1)
-
-# Trova tutti i file di backup disponibili
-backup_files = sorted(
-    [f for f in os.listdir(backup_dir) if f.startswith(project_name) and f.endswith(".tar")],
-    reverse=True
-)
-
-if not backup_files:
-    print("❌ Nessun file di backup trovato!")
-    sys.exit(1)
-
-# Mostra i backup disponibili all'utente
-print("\n📂 Backup disponibili:")
-for i, file in enumerate(backup_files, start=1):
-    print(f"  {i}) {file}")
-print("  0) ❌ Annulla e termina")
-
-# Scelta dell'utente
-while True:
-    try:
-        scelta = int(input("\n🔹 Seleziona il numero del backup da ripristinare (0 per uscire): "))
-        if scelta == 0:
-            print("❌ Ripristino annullato. Nessuna modifica effettuata.")
-            sys.exit(0)
-        elif 1 <= scelta <= len(backup_files):
-            selected_backup = os.path.join(backup_dir, backup_files[scelta - 1])
-            break
-        else:
-            print("⚠️ Numero non valido. Riprova.")
-    except ValueError:
-        print("⚠️ Inserisci un numero valido.")
-
-print(f"\n🔄 Hai scelto di ripristinare: {selected_backup}")
-
-# Funzione per estrarre evitando errori di permessi
 def safe_extract(tar, path="."):
+    """Funzione per estrarre evitando path traversal o errori di permessi."""
     for member in tar.getmembers():
         member_path = os.path.join(path, member.name)
         if not os.path.abspath(member_path).startswith(os.path.abspath(path)):
@@ -68,7 +30,41 @@ def safe_extract(tar, path="."):
         except PermissionError:
             print(f"⚠️ Permesso negato per {member.name}, ignorato.")
 
-async def esegui_restore():
+def seleziona_backup():
+    """Interfaccia da riga di comando per selezionare il file di backup da ripristinare."""
+    if not os.path.exists(backup_dir):
+        print(f"❌ La cartella di backup non esiste: {backup_dir}")
+        sys.exit(1)
+
+    backup_files = sorted(
+        [f for f in os.listdir(backup_dir) if f.startswith(project_name) and f.endswith(".tar")],
+        reverse=True
+    )
+
+    if not backup_files:
+        print("❌ Nessun file di backup trovato!")
+        sys.exit(1)
+
+    print("\n📂 Backup disponibili:")
+    for i, file in enumerate(backup_files, start=1):
+        print(f"  {i}) {file}")
+    print("  0) ❌ Annulla e termina")
+
+    while True:
+        try:
+            scelta = int(input("\n🔹 Seleziona il numero del backup da ripristinare (0 per uscire): "))
+            if scelta == 0:
+                print("❌ Ripristino annullato. Nessuna modifica effettuata.")
+                sys.exit(0)
+            elif 1 <= scelta <= len(backup_files):
+                return os.path.join(backup_dir, backup_files[scelta - 1])
+            else:
+                print("⚠️ Numero non valido. Riprova.")
+        except ValueError:
+            print("⚠️ Inserisci un numero valido.")
+
+async def esegui_restore(selected_backup):
+    """Esegue l'estrazione dell'archivio tar e il ripristino del database MySQL."""
     try:
         # Rimuove la cartella __pycache__ se esiste
         pycache_path = os.path.join(project_dir, "__pycache__")
@@ -77,7 +73,7 @@ async def esegui_restore():
             shutil.rmtree(pycache_path, ignore_errors=True)
 
         # Estrazione del backup
-        print("\n🗂 Estrazione del backup selezionato...")
+        print(f"\n🗂 Estrazione del backup: {selected_backup}...")
         with tarfile.open(selected_backup, "r") as tar:
             safe_extract(tar, os.path.dirname(project_dir))
 
@@ -86,7 +82,7 @@ async def esegui_restore():
         # Trova il file SQL per il ripristino del database
         db_backup_file = os.path.join(project_dir, f"{DB_NAME}_backup.sql")
         if not os.path.exists(db_backup_file):
-            raise FileNotFoundError("❌ File di backup del database non trovato!")
+            raise FileNotFoundError("❌ File di backup del database non trovato nell'archivio!")
 
         print(f"🔄 Ripristino database da: {db_backup_file}")
 
@@ -105,7 +101,8 @@ async def esegui_restore():
         # Messaggi di successo
         messaggio_successo = f"✅ Ripristino completato!\nBackup: {os.path.basename(selected_backup)}"
         await invia_messaggio(messaggio_successo, chat_id)
-        scrivi_log("Ripristino completato")
+        scrivi_log("Ripristino completato", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
+        log_queue.join()
 
     except Exception as e:
         # Messaggi di errore
@@ -113,7 +110,13 @@ async def esegui_restore():
         print(messaggio_errore)
         await invia_messaggio(messaggio_errore, chat_id)
         scrivi_log("Errore Ripristino", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
+        log_queue.join()
         sys.exit(1)
 
-# Eseguiamo la funzione asincrona
-asyncio.run(esegui_restore())
+def main():
+    selected_backup = seleziona_backup()
+    print(f"\n🔄 Hai scelto di ripristinare: {selected_backup}")
+    asyncio.run(esegui_restore(selected_backup))
+
+if __name__ == "__main__":
+    main()

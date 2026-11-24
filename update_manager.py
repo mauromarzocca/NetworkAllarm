@@ -27,7 +27,6 @@ TRACKED_FILES = [
     "failover-monitor.py",
     "archive_log.py",
     "backup.py",
-    "backup_no_transfer.py",
     "restore.py",
     "setup.py",
     "requirements.txt",

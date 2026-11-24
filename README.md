@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.5.0
+Versione : 10.6.0
 
 ![logo](/img/logo.png)
 
@@ -296,6 +296,11 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
     - Consolidamento ed estensione di [.gitignore](./.gitignore) con esclusione strutturata di backup (`*.bak`, `*.backup`), dump SQL (`*.sql`), archivi (`*.tar`), file di stato e log.
     - Redazione completa delle linee guida per i contributori in [CONTRIBUTING.md](./CONTRIBUTING.md) (workflow branch, convenzioni di commit semantiche, standard di codice, procedure di testing e gestione configurazioni sicure).
     - Allineamento e sincronizzazione esaustiva di [CHANGELOG.md](./CHANGELOG.md) per tutte le versioni 9 e 10.
+  - Versione 10.6.0 : Pulizia e Consolidamento Repository:
+    - Rimozione file improprio `log/__init__.py` a favore di `log/.gitkeep` ed eliminazione di 5 asset grafici storici non referenziati (~1.2 MB risparmiati).
+    - Consolidamento di `backup_no_transfer.py` in [backup](./backup.py) con supporto unificato per backup locale o remoto via SCP.
+    - Modernizzazione di [archive_log](./archive_log.py) per esecuzione tramite cron: scansione dinamica di tutte le cartelle passate, percorsi assoluti e notifica consolidata.
+    - Rifattorizzazione sicura di [restore](./restore.py) e allineamento di [Update_Manager](./update_manager.py).
 
 ---
 

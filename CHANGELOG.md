@@ -145,3 +145,10 @@
   - Consolidamento ed estensione di [.gitignore](./.gitignore) con esclusione strutturata di backup (`*.bak`, `*.backup`), dump SQL (`*.sql`), archivi (`*.tar`), file di stato e log.
   - Redazione completa delle linee guida per i contributori in [CONTRIBUTING.md](./CONTRIBUTING.md) (workflow branch, convenzioni di commit semantiche, standard di codice, procedure di testing e gestione configurazioni sicure).
   - Allineamento e sincronizzazione esaustiva di [CHANGELOG.md](./CHANGELOG.md) per tutte le versioni 9 e 10.
+- Versione 10.6.0 : Pulizia e Consolidamento Repository:
+  - Eliminazione del file improprio `log/__init__.py` da Git, sostituito dalla convenzione standard `log/.gitkeep` per prevenire conflitti durante i cambi di branch e collisioni di namespace con la libreria standard `logging`.
+  - Rimozione di screenshot e asset grafici obsoleti non referenziati in `img/` per oltre 1.2 MB di spazio risparmiato.
+  - Consolidamento di `backup_no_transfer.py` all'interno di [backup](./backup.py): supporto unificato per backup locale e remoto tramite flag CLI (`--local` / `--no-transfer`) o rilevamento configurazione `BACKUP_REMOTE_HOST`.
+  - Modernizzazione e blindatura di [archive_log](./archive_log.py): scansione dinamica di tutte le cartelle mensili passate, percorsi assoluti da configurazione centralizzata, notifica Telegram consolidata e scrittura sincrona dei log con flush della coda.
+  - Rifattorizzazione di [restore](./restore.py): incapsulamento dell'interfaccia interattiva nel blocco `if __name__ == '__main__'`, eliminando l'esecuzione immediata di codice al momento dell'import.
+  - Aggiornamento della lista `TRACKED_FILES` in [Update_Manager](./update_manager.py) rimuovendo i riferimenti a script duplicati o configurazioni private locali.
