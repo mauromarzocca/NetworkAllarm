@@ -156,3 +156,7 @@
   - Incrementato il ping ICMP da 1 a 3 pacchetti (`-c 3`) con timeout esplicito (`-W 1`) in [main](./main.py), eliminando i falsi positivi di disconnessione causati da risveglio schede di rete (EEE / Low Power Idle) e risparmio energetico Wi-Fi IoT (DTIM sleep su telecamere Tapo).
   - Parametrizzazione centralizzata in [config.example](./config.example.py) e [setup](./setup.py) tramite `PING_COUNT` e `PING_TIMEOUT`, con fallback predefinito a 3 pacchetti e 1 secondo.
   - Aggiunta protezione con timeout Python (`TimeoutExpired`) su `subprocess.check_output` per prevenire il blocco indefinito dei thread di monitoraggio.
+- Versione 10.6.2 : Automazione Verifica Requisiti in Update Manager:
+  - Implementata la verifica automatica e non interattiva delle dipendenze da `requirements.txt` in [Update_Manager](./update_manager.py) tramite `importlib.metadata`.
+  - Se tutti i requisiti sono già soddisfatti, l'aggiornamento procede direttamente senza richiedere conferme all'utente e senza invocare inutilmente `pip install`.
+  - In caso di dipendenze mancanti o non conformi, l'installazione viene eseguita in automatico segnalando i singoli pacchetti aggiornati.

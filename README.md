@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.6.1
+Versione : 10.6.2
 
 ![logo](/img/logo.png)
 
@@ -304,6 +304,9 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - Versione 10.6.1 : Tolleranza Rete & Monitoraggio Ping Multi-Pacchetto:
     - Incrementato il ping ICMP a 3 pacchetti con timeout esplicito (`-W 1`) per eliminare falsi allarmi su nodi con Energy Efficient Ethernet (EEE) e telecamere Wi-Fi IoT.
     - Parametrizzazione centralizzata tramite `PING_COUNT` e `PING_TIMEOUT` in configurazione con fallback sicuri.
+  - Versione 10.6.2 : Automazione Verifica Requisiti in Update Manager:
+    - Controllo automatico e silenzioso dei requisiti in `requirements.txt`: nessuna interruzione o prompt per l'utente se i pacchetti sono già installati.
+    - Installazione automatica solo in presenza di dipendenze mancanti o versioni non allineate.
 
 ---
 
