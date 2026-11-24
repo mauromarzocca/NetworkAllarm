@@ -140,3 +140,8 @@
   - Introdotta soglia di tolleranza e debounce (retry threshold configurabile) in [failover-monitor](./failover-monitor.py) per prevenire flapping, falsi allarmi e split-brain causati da jitter o micro-interruzioni di rete.
   - Health check dinamico su `/health` in [main](./main.py): verifica dello stato effettivo della connessione MySQL e del battito cardiaco del loop di monitoraggio, restituendo HTTP 503 Service Unavailable in caso di stallo o degrado.
   - [Update_Manager](./update_manager.py) nativo Git: migrazione da download HTTP di singoli file a operazioni native `git fetch`, `git pull` e checkout del branch con merge automatico e preservazione della configurazione locale.
+- Versione 10.5.0 : Igiene Repository & Documentazione:
+  - Pulizia completa dei file AppleDouble (`._*`) generati da macOS, eliminando gli avvisi di indici non monotonici nel repository Git.
+  - Consolidamento ed estensione di [.gitignore](./.gitignore) con esclusione strutturata di backup (`*.bak`, `*.backup`), dump SQL (`*.sql`), archivi (`*.tar`), file di stato e log.
+  - Redazione completa delle linee guida per i contributori in [CONTRIBUTING.md](./CONTRIBUTING.md) (workflow branch, convenzioni di commit semantiche, standard di codice, procedure di testing e gestione configurazioni sicure).
+  - Allineamento e sincronizzazione esaustiva di [CHANGELOG.md](./CHANGELOG.md) per tutte le versioni 9 e 10.

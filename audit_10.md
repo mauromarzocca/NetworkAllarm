@@ -343,9 +343,9 @@ flowchart LR
 ### Fase 5 — Release `v10.5.0` (Igiene Repository & Documentazione)
 > **Obiettivo:** Pulizia definitiva del repository, completamento documentazione e standard di rilascio.
 
-- [ ] **Fix 8.2 (Pulizia AppleDouble):** Rimozione dei file `._*` e risoluzione definitiva del warning sull'indice dei pack di Git.
-- [ ] **Fix 8.3 (`.gitignore` completo):** Esclusione di `*.bak`, `*.sql`, `stato/*`, `log/*`, `__pycache__` e `._*`.
-- [ ] **Fix 8.4 (Changelog & Contributing):** Compilazione dettagliata di `CHANGELOG.md` per le versioni 9, 10 e 10.1, e stesura delle linee guida in `CONTRIBUTING.md`.
+- [x] **Fix 8.2 (Pulizia AppleDouble):** Rimozione definitiva di tutti i file `._*` e risoluzione totale del warning Git sull'indice dei pack (`non-monotonic index`).
+- [x] **Fix 8.3 (`.gitignore` completo):** Esclusione strutturata di `*.bak`, `*.backup`, `*.sql`, `*.tar`, `*.gz`, `stato/*`, `log/*`, `__pycache__`, editor config (`.vscode/`, `.idea/`) e `._*`.
+- [x] **Fix 8.4 (Changelog & Contributing):** Compilazione dettagliata di `CHANGELOG.md` per le versioni 9 e 10 (con tutte le sotto-release da 10.1.1 a 10.5.0) e stesura completa delle linee guida per i contributori in `CONTRIBUTING.md`.
 
 ---
 
