@@ -3,6 +3,7 @@ import asyncio
 import os
 import sys
 from functools import wraps
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -10,6 +11,7 @@ import pytz
 import config
 from config import cartella_log_base, credenziali
 import mysql.connector
+from mysql.connector import pooling
 from config import DB_USER, DB_PASSWORD
 import socket
 from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release, invia_messaggio_sync
@@ -23,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.2.0"
+version = "10.3.0"
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -57,34 +59,75 @@ DB_PASSWORD = config.DB_PASSWORD
 executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS)
 
 def create_database_if_not_exists():
-    #Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
+    # Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
     try:
-        # Connessione iniziale senza specificare il database
         cnx = mysql.connector.connect(
             user=config.DB_USER,
             password=config.DB_PASSWORD,
             host=DB_HOST
         )
-        cursor = cnx.cursor()
-
-        # Creazione del database se non esiste
         try:
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.DB_NAME}")
-            print(f"Database {config.DB_NAME} creato o esistente.")
-        except mysql.connector.Error as err:
-            print(f"Errore durante la creazione del database: {err}")
-            exit(1)
-
-        cursor.close()
-        cnx.close()
-
+            cursor = cnx.cursor()
+            try:
+                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.DB_NAME}")
+                print(f"Database {config.DB_NAME} creato o esistente.")
+            finally:
+                cursor.close()
+        finally:
+            cnx.close()
     except mysql.connector.Error as err:
         print(f"Errore di connessione al server MySQL: {err}")
         exit(1)
 
+# Connection Pool MySQL
+_db_pool = None
+
+def get_db_pool():
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = pooling.MySQLConnectionPool(
+            pool_name="networkallarm_pool",
+            pool_size=config.MAX_WORKERS,
+            pool_reset_session=True,
+            user=config.DB_USER,
+            password=config.DB_PASSWORD,
+            host=DB_HOST,
+            database=config.DB_NAME
+        )
+    return _db_pool
+
+@contextmanager
+def get_db_connection():
+    pool = get_db_pool()
+    cnx = pool.get_connection()
+    try:
+        yield cnx
+    finally:
+        cnx.close()
+
+@contextmanager
+def get_db_cursor(commit=False):
+    with get_db_connection() as cnx:
+        cursor = cnx.cursor()
+        try:
+            yield cursor
+            if commit:
+                cnx.commit()
+        finally:
+            cursor.close()
+
+def get_device_name_by_ip(ip):
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("SELECT Nome FROM monitor WHERE IP = %s", (ip,))
+            row = cursor.fetchone()
+            return row[0] if row else ip
+    except Exception:
+        return ip
+
 def import_addresses(cursor):
-    #Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
-    #Se un record esiste già, aggiorna il nome e l'indirizzo IP.
+    # Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
+    # Se un record esiste già, aggiorna il nome e l'indirizzo IP.
     for indirizzo in config.indirizzi_ping:
         try:
             query = """
@@ -97,7 +140,7 @@ def import_addresses(cursor):
             print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
 
 def renumber_ids(cursor):
-    #Rinumerare gli ID della tabella monitor per renderli sequenziali.
+    # Rinumerare gli ID della tabella monitor per renderli sequenziali.
     try:
         cursor.execute("SET @count = 0;")
         cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
@@ -107,42 +150,23 @@ def renumber_ids(cursor):
         print(f"Errore durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
-    #Crea la tabella monitor all'interno del database NetworkAllarm.
+    # Crea la tabella monitor all'interno del database NetworkAllarm.
     try:
-        # Prima assicurati che il database esista
         create_database_if_not_exists()
 
-        # Ora connetti al database specifico
-        cnx = mysql.connector.connect(
-            user=config.DB_USER,
-            password=config.DB_PASSWORD,
-            host=DB_HOST,
-            database=config.DB_NAME
-        )
-        cursor = cnx.cursor()
-
-        # Creare la tabella monitor se non esiste
-        create_table_query = '''
-        CREATE TABLE IF NOT EXISTS monitor (
-            ID INT AUTO_INCREMENT PRIMARY KEY,
-            Nome VARCHAR(255) NOT NULL,
-            IP VARCHAR(15) NOT NULL UNIQUE,
-            Maintenence BOOLEAN DEFAULT FALSE
-        ) AUTO_INCREMENT=1;
-        '''
-        cursor.execute(create_table_query)
-
-        # Importare indirizzi_ping nel database
-        import_addresses(cursor)
-
-        # Rinumerare gli ID per mantenerli sequenziali
-        renumber_ids(cursor)
-
-        cnx.commit()
-        print("Database e tabella monitor pronti all'uso.")
-
-        cursor.close()
-        cnx.close()
+        with get_db_cursor(commit=True) as cursor:
+            create_table_query = '''
+            CREATE TABLE IF NOT EXISTS monitor (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                Nome VARCHAR(255) NOT NULL,
+                IP VARCHAR(15) NOT NULL UNIQUE,
+                Maintenence BOOLEAN DEFAULT FALSE
+            ) AUTO_INCREMENT=1;
+            '''
+            cursor.execute(create_table_query)
+            import_addresses(cursor)
+            renumber_ids(cursor)
+            print("Database e tabella monitor pronti all'uso.")
 
     except mysql.connector.Error as err:
         print(f"Errore durante l'operazione sul database: {err}")
@@ -246,15 +270,9 @@ def load_maintenance_data():
 modalita_manutenzione = False
 
 def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
-    query = ("UPDATE monitor SET Maintenence = %s WHERE Nome = %s AND IP = %s")
-    cursor.execute(query, (in_manutenzione, nome, indirizzo))
-    cnx.commit()
-
-    cursor.close()
-    cnx.close()
+    with get_db_cursor(commit=True) as cursor:
+        query = ("UPDATE monitor SET Maintenence = %s WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (in_manutenzione, nome, indirizzo))
 
 # Funzione sincrona per eseguire il ping (bloccante)
 def _esegui_ping_sync(indirizzo):
@@ -275,30 +293,27 @@ def _read_file_sync(filepath):
         return file.readlines()
 
 # Funzione asincrona che wrappa il ping sincrono
-async def controlla_connessione(indirizzo):
-    # Verifica se il dispositivo è in stato di manutenzione
-    # Utilizziamo run_in_executor anche per il DB qui per non bloccare se il DB è lento (opzionale ma consigliato)
+async def controlla_connessione(indirizzo, skip_maintenance_check=False):
+    # Verifica se il dispositivo è in stato di manutenzione (se non già verificato a monte)
     loop = asyncio.get_running_loop()
 
-    def check_maintenance():
-        try:
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
-            cursor.execute(query, (indirizzo,))
-            stato_manutenzione = cursor.fetchone()
-            cursor.close()
-            cnx.close()
-            return stato_manutenzione and stato_manutenzione[0]
-        except Exception as e:
-            print(f"Errore verifica manutenzione: {e}")
-            return False
+    if not skip_maintenance_check:
+        def check_maintenance():
+            try:
+                with get_db_cursor() as cursor:
+                    query = ("SELECT Maintenence FROM monitor WHERE IP = %s")
+                    cursor.execute(query, (indirizzo,))
+                    stato_manutenzione = cursor.fetchone()
+                    return stato_manutenzione and stato_manutenzione[0]
+            except Exception as e:
+                print(f"Errore verifica manutenzione: {e}")
+                return False
 
-    is_maintenance = await loop.run_in_executor(executor, check_maintenance)
+        is_maintenance = await loop.run_in_executor(executor, check_maintenance)
 
-    if is_maintenance:
-        print(f"Il dispositivo {indirizzo} è in stato di manutenzione, non effettuo il controllo di connessione.")
-        return True  # Ritorna True per indicare che il dispositivo è in stato di manutenzione
+        if is_maintenance:
+            print(f"Il dispositivo {indirizzo} è in stato di manutenzione, non effettuo il controllo di connessione.")
+            return True  # Ritorna True per indicare che il dispositivo è in stato di manutenzione
 
     # Effettua il controllo di connessione in un thread separato
     return await loop.run_in_executor(executor, _esegui_ping_sync, indirizzo)
@@ -407,20 +422,17 @@ async def invia_contenuto_file(data_target=None, silent=False):
         if not contenuto_da_inviare:
             print("Nessun evento da segnalare.")
             await invia_messaggio(f"{intestazione}\n✅ Nessun evento da segnalare.", config.chat_id)
-            # Conta il numero di occorrenze di "Avvio dello script"
-            numero_avvii = sum(1 for line in contenuto_file if "Avvio dello script" in line)
             if numero_avvii > 1:
                 await invia_messaggio(f"Avvio dello script: {numero_avvii}", config.chat_id)
-            numero_servizi = sum(1 for line in contenuto_file if "Servizio avviato" in line)
             if numero_servizi > 0:
-                await invia_messaggio(f"Servizio Avviato: {numero_servizi}", config.chat_id)
+                await invia_messaggio(f"Servizio avviato: {numero_servizi}", config.chat_id)
         else:
             if numero_avvii > 1:
                 messaggio_avvii = f"Avvio dello script : {numero_avvii}"
                 contenuto_da_inviare.insert(0, messaggio_avvii)
             if numero_servizi > 0:
-                messaggio_serivio = f"Avvio dello script : {numero_servizi}"
-                contenuto_da_inviare.insert(0, messaggio_serivio)
+                messaggio_servizio = f"Servizio avviato : {numero_servizi}"
+                contenuto_da_inviare.insert(0, messaggio_servizio)
 
             contenuto_da_inviare.insert(0, intestazione)
             contenuto_da_inviare_str = '\n'.join(contenuto_da_inviare)
@@ -488,23 +500,6 @@ async def invia_log_corrente(chat_id):
         await invia_messaggio(f"⚠️ File Log momentaneamente non disponibile.", chat_id)
         return
 
-cnx = None
-
-def get_db_connection():
-    global cnx
-    if cnx is None:
-        try:
-            cnx = mysql.connector.connect(
-                user=DB_USER,
-                password=DB_PASSWORD,
-                host=DB_HOST,
-                database=DB_NAME
-            )
-        except mysql.connector.Error as err:
-            print(f"Errore di connessione al database: {err}")
-            return None
-    return cnx
-
 async def avvia_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, reason=None):
     global modalita_manutenzione, manutenzione_reason
 
@@ -535,18 +530,13 @@ async def termina_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def manutenzione_silent_off(nome_dispositivo, indirizzo_ip):
     # Versione silenziosa di manutenzione per scadenza temporanea
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
     messaggio = f"Manutenzione Temporanea Scaduta su {nome_dispositivo} - {indirizzo_ip}"
     await invia_messaggio(messaggio, config.chat_id)
     scrivi_log(messaggio)
 
-    query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
-    cursor.execute(query, (indirizzo_ip,))
-    cnx.commit()
-    cursor.close()
-    cnx.close()
+    with get_db_cursor(commit=True) as cursor:
+        query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
+        cursor.execute(query, (indirizzo_ip,))
 
 def utente_autorizzato(user_id):
     if not hasattr(config, 'autorizzati') or not config.autorizzati:
@@ -701,42 +691,33 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_messaggio(f"Manutenzione temporanea attivata per {minuti} minuti.", chat_id)
         if not modalita_manutenzione:
             await avvia_manutenzione(update, context)
-    elif query.data.startswith("system_advance_info_"):
-        parts = query.data.split("_")
-        nome_dispositivo = parts[3]
-        indirizzo_ip = parts[4]
+    elif query.data.startswith("sys_adv_info:") or query.data.startswith("system_advance_info_"):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
         await invia_info_avanzate(update, context, nome_dispositivo, indirizzo_ip)
-    elif query.data.startswith("rimuovi_"):
-        parts = query.data.split("_")
-        nome_dispositivo = parts[1]
-        indirizzo_ip = parts[2]
+    elif query.data.startswith("rimuovi:") or (query.data.startswith("rimuovi_") and not query.data.startswith("rimuovi_dispositivo")):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
 
         # Crea un elenco di pulsanti per confermare o annullare la rimozione
         pulsanti = [
-            [InlineKeyboardButton("Sì, rimuovi", callback_data=f"conferma_rimozione_{nome_dispositivo}_{indirizzo_ip}"),
-             InlineKeyboardButton("No, annulla", callback_data=f"annulla_rimozione_{nome_dispositivo}_{indirizzo_ip}")],
+            [InlineKeyboardButton("Sì, rimuovi", callback_data=f"conferma_rimozione:{indirizzo_ip}"),
+             InlineKeyboardButton("No, annulla", callback_data=f"annulla_rimozione:{indirizzo_ip}")],
         ]
-
-        # Crea la tastiera con i pulsanti
         keyboard = InlineKeyboardMarkup(pulsanti)
-
-        # Invia il messaggio con la tastiera
         await invia_messaggio(f"Sei sicuro di voler rimuovere il dispositivo {nome_dispositivo} ({indirizzo_ip})?", chat_id, reply_markup=keyboard)
-    elif query.data.startswith("conferma_rimozione_"):
-        parts = query.data.split("_")
-        nome_dispositivo = parts[2]
-        indirizzo_ip = parts[3]
+    elif query.data.startswith("conferma_rimozione:") or query.data.startswith("conferma_rimozione_"):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
         await cancella_dispositivo_async(nome_dispositivo, indirizzo_ip)
         await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", chat_id)
-    elif query.data.startswith("annulla_rimozione_"):
-        parts = query.data.split("_")
-        nome_dispositivo = parts[2]
-        indirizzo_ip = parts[3]
+    elif query.data.startswith("annulla_rimozione:") or query.data.startswith("annulla_rimozione_"):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
         await invia_messaggio(f"Rimozione del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", chat_id)
-    elif query.data.startswith("modifica_"):
-        parts = query.data.split("_")
-        nome_dispositivo = parts[1]
-        indirizzo_ip = parts[2]
+    elif query.data.startswith("modifica:") or (query.data.startswith("modifica_") and not query.data.startswith("modifica_dispositivo")):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
 
         # Richiedi i nuovi dati del dispositivo
         await invia_messaggio("Inserisci il nuovo nome del dispositivo:", chat_id)
@@ -748,87 +729,92 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'manutenzione':
         await menu_manutenzione(update, context)
     # Gestione delle azioni di manutenzione
-    elif query.data.startswith("manutenzione_"):
-        parts = query.data.split("_")
-        if len(parts) == 3:
-            _, nome_dispositivo, indirizzo_ip = parts
-            # Aggiungi i bottoni per la manutenzione
-            keyboard = [
-                [InlineKeyboardButton("Manutenzione ON", callback_data=f"manutenzione_on_{nome_dispositivo}_{indirizzo_ip}"),
-                 InlineKeyboardButton("Manutenzione OFF", callback_data=f"manutenzione_off_{nome_dispositivo}_{indirizzo_ip}")],
-                [InlineKeyboardButton("Manutenzione Temporanea", callback_data=f"manutenzione_temp_disp_{nome_dispositivo}_{indirizzo_ip}")]
-            ]
-            await invia_messaggio(f"Gestione manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
-        elif len(parts) == 5 and parts[1] == "temp" and parts[2] == "disp":
-            # Menu manutenzione temporanea dispositivo
-            _, _, _, nome_dispositivo, indirizzo_ip = parts
-            keyboard = [
-                [InlineKeyboardButton("30 Minuti", callback_data=f"manut_temp_val_30_{nome_dispositivo}_{indirizzo_ip}"),
-                 InlineKeyboardButton("1 Ora", callback_data=f"manut_temp_val_60_{nome_dispositivo}_{indirizzo_ip}"),
-                 InlineKeyboardButton("2 Ore", callback_data=f"manut_temp_val_120_{nome_dispositivo}_{indirizzo_ip}")]
-            ]
-            await invia_messaggio(f"Durata manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
-        elif len(parts) == 4:
-            action, nome_dispositivo, indirizzo_ip = parts[1:]
-            if action == "off":
-                dispositivi_manutenzione_scadenza.pop(indirizzo_ip, None)
-                save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
-            await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
-
-    elif query.data.startswith("manut_temp_val_"):
-        # Imposta manutenzione temporanea dispositivo
-        parts = query.data.split("_")
-        minuti = int(parts[3])
-        nome_dispositivo = parts[4]
-        indirizzo_ip = parts[5]
-
+    elif query.data.startswith("manut_disp:") or (query.data.startswith("manutenzione_") and len(query.data.split("_")) == 3):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
+        keyboard = [
+            [InlineKeyboardButton("Manutenzione ON", callback_data=f"manut_act:on:{indirizzo_ip}"),
+             InlineKeyboardButton("Manutenzione OFF", callback_data=f"manut_act:off:{indirizzo_ip}")],
+            [InlineKeyboardButton("Manutenzione Temporanea", callback_data=f"manut_temp_disp:{indirizzo_ip}")]
+        ]
+        await invia_messaggio(f"Gestione manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
+    elif query.data.startswith("manut_temp_disp:") or (query.data.startswith("manutenzione_") and "temp_disp" in query.data):
+        indirizzo_ip = query.data.split(":", 1)[1] if ":" in query.data else query.data.rsplit("_", 1)[1]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
+        keyboard = [
+            [InlineKeyboardButton("30 Minuti", callback_data=f"manut_temp_val:30:{indirizzo_ip}"),
+             InlineKeyboardButton("1 Ora", callback_data=f"manut_temp_val:60:{indirizzo_ip}"),
+             InlineKeyboardButton("2 Ore", callback_data=f"manut_temp_val:120:{indirizzo_ip}")]
+        ]
+        await invia_messaggio(f"Durata manutenzione per {nome_dispositivo}:", chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
+    elif query.data.startswith("manut_act:") or (query.data.startswith("manutenzione_") and len(query.data.split("_")) == 4):
+        if ":" in query.data:
+            _, action, indirizzo_ip = query.data.split(":", 2)
+        else:
+            parts = query.data.split("_")
+            action, indirizzo_ip = parts[1], parts[3]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
+        if action == "off":
+            dispositivi_manutenzione_scadenza.pop(indirizzo_ip, None)
+            save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
+        await manutenzione(update, context, action, nome_dispositivo, indirizzo_ip)
+    elif query.data.startswith("manut_temp_val:") or query.data.startswith("manut_temp_val_"):
+        if ":" in query.data:
+            _, minuti_str, indirizzo_ip = query.data.split(":", 2)
+            minuti = int(minuti_str)
+        else:
+            parts = query.data.split("_")
+            minuti = int(parts[3])
+            indirizzo_ip = parts[5]
+        nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
         scadenza = datetime.now() + timedelta(minutes=minuti)
         dispositivi_manutenzione_scadenza[indirizzo_ip] = scadenza
         save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
-
         await manutenzione(update, context, "on", nome_dispositivo, indirizzo_ip)
         await invia_messaggio(f"Manutenzione temporanea per {nome_dispositivo} attivata per {minuti} minuti.", chat_id)
     # Gestione della conferma di aggiunta
-    elif query.data.startswith("conferma_aggiunta_"):
-        parts = query.data.split("_")
-        conferma = parts[2]
-        nome_dispositivo = parts[3]
-        indirizzo_ip = parts[4]
+    elif query.data.startswith("conferma_aggiunta:") or query.data.startswith("conferma_aggiunta_"):
+        conferma = "si" if "si" in query.data else "no"
+        nome_dispositivo = context.user_data.get('nome_dispositivo')
+        indirizzo_ip = context.user_data.get('indirizzo_ip')
+        if not nome_dispositivo and "_" in query.data:
+            parts = query.data.split("_")
+            if len(parts) >= 5:
+                nome_dispositivo, indirizzo_ip = parts[3], parts[4]
 
-        if conferma == "si":
-            # Aggiungi il dispositivo al database in stato di manutenzione
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)")
-            cursor.execute(query, (nome_dispositivo, indirizzo_ip, True))
-            cnx.commit()
-            cursor.close()
-            cnx.close()
-
+        if conferma == "si" and nome_dispositivo and indirizzo_ip:
+            with get_db_cursor(commit=True) as cursor:
+                query_sql = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)")
+                cursor.execute(query_sql, (nome_dispositivo, indirizzo_ip, True))
             scrivi_log(f"Dispositivo aggiunto in manutenzione: {nome_dispositivo} - {indirizzo_ip}")
+            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo in stato di manutenzione!", chat_id)
+        else:
+            await invia_messaggio("Aggiunta del dispositivo annullata.", chat_id)
+        context.user_data['azione'] = None
+    elif query.data.startswith("conferma_modifica:") or query.data.startswith("conferma_modifica_"):
+        conferma = "si" if "si" in query.data else "no"
+        if conferma == "si":
+            nuovo_nome = context.user_data.get('nuovo_nome')
+            nuovo_indirizzo_ip = context.user_data.get('nuovo_indirizzo_ip')
+            vecchio_nome = context.user_data.get('nome_dispositivo')
+            vecchio_indirizzo_ip = context.user_data.get('indirizzo_ip')
+            if not nuovo_nome and "_" in query.data:
+                parts = query.data.split("_")
+                if len(parts) >= 7:
+                    nuovo_nome, nuovo_indirizzo_ip, vecchio_nome, vecchio_indirizzo_ip = parts[3], parts[4], parts[5], parts[6]
 
-            await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) aggiunto con successo in stato di manutenzione!", update.effective_chat.id)
-        elif conferma == "no":
-            await invia_messaggio(f"Aggiunta del dispositivo {nome_dispositivo} ({indirizzo_ip}) annullata.", update.effective_chat.id)
-    
-    elif query.data.startswith("conferma_modifica_si_"):
-        parts = query.data.split("_")
-        nuovo_nome = parts[3]
-        nuovo_indirizzo_ip = parts[4]
-        vecchio_nome = parts[5]
-        vecchio_indirizzo_ip = parts[6]
-
-        # Aggiorna il dispositivo nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = TRUE WHERE Nome = %s AND IP = %s")
-        cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, vecchio_nome, vecchio_indirizzo_ip))
-        cnx.commit()
-        cursor.close()
-        cnx.close()
-
-        scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
-        await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
+            if nuovo_nome and nuovo_indirizzo_ip and vecchio_nome and vecchio_indirizzo_ip:
+                with get_db_cursor(commit=True) as cursor:
+                    query_sql = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = TRUE WHERE Nome = %s AND IP = %s")
+                    cursor.execute(query_sql, (nuovo_nome, nuovo_indirizzo_ip, vecchio_nome, vecchio_indirizzo_ip))
+                scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
+                await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", chat_id)
+                context.user_data['nome_dispositivo'] = nuovo_nome
+            else:
+                await invia_messaggio("Dati per la modifica non disponibili o sessione scaduta.", chat_id)
+        else:
+            await invia_messaggio("Modifica del dispositivo annullata.", chat_id)
+        context.user_data['azione'] = None
 
 @richiede_autorizzazione
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -878,46 +864,38 @@ async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAUL
 
 @richiede_autorizzazione
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
+    with get_db_cursor(commit=True) as cursor:
+        if action == "off":
+            # Esegui azioni per la manutenzione OFF
+            messaggio = f"Manutenzione Disattiva su {nome_dispositivo} - {indirizzo_ip}"
+            await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
+            if str(update.effective_chat.id) != str(config.chat_id):
+                await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale solo se diverso
+            scrivi_log(messaggio)
 
-    if action == "off":
-        # Esegui azioni per la manutenzione OFF
-        messaggio = f"Manutenzione Disattiva su {nome_dispositivo} - {indirizzo_ip}"
-        await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
-        await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
-        scrivi_log(messaggio)
+            # Aggiorna il valore di Maintenence nel database
+            query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
+            cursor.execute(query, (indirizzo_ip,))
 
-        # Aggiorna il valore di Maintenence nel database
-        query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
-        cursor.execute(query, (indirizzo_ip,))
-        cnx.commit()
+        elif action == "on":
+            # Esegui azioni per la manutenzione ON
+            messaggio = f"Manutenzione Attiva su {nome_dispositivo} - {indirizzo_ip}"
+            await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
+            if str(update.effective_chat.id) != str(config.chat_id):
+                await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale solo se diverso
+            scrivi_log(messaggio)
 
-    elif action == "on":
-        # Esegui azioni per la manutenzione ON
-        messaggio = f"Manutenzione Attiva su {nome_dispositivo} - {indirizzo_ip}"
-        await invia_messaggio(messaggio, update.effective_chat.id)  # Invia messaggio sul bot
-        await invia_messaggio(messaggio, config.chat_id)  # Invia messaggio sul canale
-        scrivi_log(messaggio)
-
-        # Aggiorna il valore di Maintenence nel database
-        query = ("UPDATE monitor SET Maintenence = TRUE WHERE IP = %s")
-        cursor.execute(query, (indirizzo_ip,))
-        cnx.commit()
-
-    cursor.close()
-    cnx.close()
+            # Aggiorna il valore di Maintenence nel database
+            query = ("UPDATE monitor SET Maintenence = TRUE WHERE IP = %s")
+            cursor.execute(query, (indirizzo_ip,))
        
 @richiede_autorizzazione
 async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global dispositivi_manutenzione_scadenza
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Nome, IP, Maintenence FROM monitor")
-    cursor.execute(query)
-    dispositivi = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+    with get_db_cursor() as cursor:
+        query = ("SELECT Nome, IP, Maintenence FROM monitor")
+        cursor.execute(query)
+        dispositivi = cursor.fetchall()
 
     # Crea righe da massimo 3 pulsanti
     pulsanti = []
@@ -935,7 +913,7 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 label += " (Man.)"
 
-        pulsanti.append(InlineKeyboardButton(label, callback_data=f"manutenzione_{nome}_{ip}"))
+        pulsanti.append(InlineKeyboardButton(label, callback_data=f"manut_disp:{ip}"))
 
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
@@ -944,17 +922,14 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
 @richiede_autorizzazione
 async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Nome, IP FROM monitor")
-    cursor.execute(query)
-    dispositivi = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+    with get_db_cursor() as cursor:
+        query = ("SELECT Nome, IP FROM monitor")
+        cursor.execute(query)
+        dispositivi = cursor.fetchall()
 
     pulsanti = []
     for dispositivo in dispositivi:
-        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"system_advance_info_{dispositivo[0]}_{dispositivo[1]}"))
+        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"sys_adv_info:{dispositivo[1]}"))
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
     await invia_messaggio("Seleziona il dispositivo per informazioni avanzate:", chat_id, reply_markup=keyboard)
@@ -963,14 +938,10 @@ async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global modalita_manutenzione, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, manutenzione_reason
     stati_connessioni = []
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
-    query = ("SELECT Nome, IP, Maintenence FROM monitor")
-    cursor.execute(query)
-    dispositivi = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+    with get_db_cursor() as cursor:
+        query = ("SELECT Nome, IP, Maintenence FROM monitor")
+        cursor.execute(query)
+        dispositivi = cursor.fetchall()
 
     if modalita_manutenzione:
         header = "🔧 **Modalità Manutenzione Globale Attiva**"
@@ -1050,13 +1021,10 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Verifica se l'indirizzo IP è già presente nel database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("SELECT * FROM monitor WHERE IP = %s")
-        cursor.execute(query, (indirizzo_ip,))
-        result = cursor.fetchone()
-        cursor.close()
-        cnx.close()
+        with get_db_cursor() as cursor:
+            query = ("SELECT * FROM monitor WHERE IP = %s")
+            cursor.execute(query, (indirizzo_ip,))
+            result = cursor.fetchone()
 
         if result:
             await invia_messaggio(f"Il dispositivo con l'indirizzo IP {indirizzo_ip} è già presente nel database.", update.effective_chat.id)
@@ -1070,22 +1038,17 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             stato_manutenzione = True
             keyboard = [
-                [InlineKeyboardButton("Sì", callback_data=f"conferma_aggiunta_si_{nome_dispositivo}_{indirizzo_ip}"),
-                InlineKeyboardButton("No", callback_data=f"conferma_aggiunta_no_{nome_dispositivo}_{indirizzo_ip}")]
+                [InlineKeyboardButton("Sì", callback_data="conferma_aggiunta:si"),
+                 InlineKeyboardButton("No", callback_data="conferma_aggiunta:no")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await invia_messaggio(f"⚠️ Connessione fallita con {nome_dispositivo} ({indirizzo_ip}). Vuoi aggiungerlo comunque al database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
-            context.user_data['azione'] = None
             return
 
         # Aggiungi il dispositivo al database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)")
-        cursor.execute(query, (nome_dispositivo, indirizzo_ip, stato_manutenzione))
-        cnx.commit()
-        cursor.close()
-        cnx.close()
+        with get_db_cursor(commit=True) as cursor:
+            query = ("INSERT INTO monitor (Nome, IP, Maintenence) VALUES (%s, %s, %s)")
+            cursor.execute(query, (nome_dispositivo, indirizzo_ip, stato_manutenzione))
 
         scrivi_log(f"Aggiunto Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
         if stato_manutenzione:
@@ -1120,13 +1083,9 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Verifica se l'indirizzo IP è lo stesso di quello già presente
         if nuovo_indirizzo_ip == vecchio_indirizzo_ip:
             # Aggiorna il dispositivo nel database
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("UPDATE monitor SET Nome = %s WHERE Nome = %s AND IP = %s")
-            cursor.execute(query, (nuovo_nome, vecchio_nome, vecchio_indirizzo_ip))
-            cnx.commit()
-            cursor.close()
-            cnx.close()
+            with get_db_cursor(commit=True) as cursor:
+                query = ("UPDATE monitor SET Nome = %s WHERE Nome = %s AND IP = %s")
+                cursor.execute(query, (nuovo_nome, vecchio_nome, vecchio_indirizzo_ip))
 
             scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {vecchio_indirizzo_ip}")
             await invia_messaggio(f"Dispositivo {nuovo_nome} ({vecchio_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
@@ -1135,13 +1094,10 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['azione'] = None
         else:
             # Verifica se l'indirizzo IP è già presente nel database
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("SELECT * FROM monitor WHERE IP = %s")
-            cursor.execute(query, (nuovo_indirizzo_ip,))
-            result = cursor.fetchone()
-            cursor.close()
-            cnx.close()
+            with get_db_cursor() as cursor:
+                query = ("SELECT * FROM monitor WHERE IP = %s")
+                cursor.execute(query, (nuovo_indirizzo_ip,))
+                result = cursor.fetchone()
 
             if result:
                 dispositivo_esistente = result[1]
@@ -1156,23 +1112,20 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await invia_messaggio(f"✅ Connessione riuscita con {nuovo_nome} ({nuovo_indirizzo_ip}). Aggiornando il database...", update.effective_chat.id)
             else:
                 stato_manutenzione = True
+                context.user_data['nuovo_nome'] = nuovo_nome
+                context.user_data['nuovo_indirizzo_ip'] = nuovo_indirizzo_ip
                 keyboard = [
-                    [InlineKeyboardButton("Sì", callback_data=f"conferma_modifica_si_{nuovo_nome}_{nuovo_indirizzo_ip}_{vecchio_nome}_{vecchio_indirizzo_ip}"),
-                    InlineKeyboardButton("No", callback_data=f"conferma_modifica_no_{nuovo_nome}_{nuovo_indirizzo_ip}")]
+                    [InlineKeyboardButton("Sì", callback_data="conferma_modifica:si"),
+                     InlineKeyboardButton("No", callback_data="conferma_modifica:no")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await invia_messaggio(f"⚠️ Connessione fallita con {nuovo_nome} ({nuovo_indirizzo_ip}). Vuoi aggiornare il database in stato di manutenzione?", update.effective_chat.id, reply_markup=reply_markup)
-                context.user_data['azione'] = None
                 return
 
             # Aggiorna il dispositivo nel database
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = %s WHERE Nome = %s AND IP = %s")
-            cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, stato_manutenzione, vecchio_nome, vecchio_indirizzo_ip))
-            cnx.commit()
-            cursor.close()
-            cnx.close()
+            with get_db_cursor(commit=True) as cursor:
+                query = ("UPDATE monitor SET Nome = %s, IP = %s, Maintenence = %s WHERE Nome = %s AND IP = %s")
+                cursor.execute(query, (nuovo_nome, nuovo_indirizzo_ip, stato_manutenzione, vecchio_nome, vecchio_indirizzo_ip))
 
             scrivi_log(f"Modificato Dispositivo : {vecchio_nome} - {vecchio_indirizzo_ip} -> {nuovo_nome} - {nuovo_indirizzo_ip}")
             await invia_messaggio(f"Dispositivo {nuovo_nome} ({nuovo_indirizzo_ip}) aggiornato con successo!", update.effective_chat.id)
@@ -1185,13 +1138,9 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         indirizzo_ip = context.user_data.get('indirizzo_ip')
 
         # Elimina il dispositivo dal database
-        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-        cursor = cnx.cursor()
-        query = ("DELETE FROM monitor WHERE Nome = %s AND IP = %s")
-        cursor.execute(query, (nome_dispositivo, indirizzo_ip))
-        cnx.commit()
-        cursor.close()
-        cnx.close()
+        with get_db_cursor(commit=True) as cursor:
+            query = ("DELETE FROM monitor WHERE Nome = %s AND IP = %s")
+            cursor.execute(query, (nome_dispositivo, indirizzo_ip))
 
         scrivi_log(f"Eliminato Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
         await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) eliminato con successo!", update.effective_chat.id)
@@ -1529,65 +1478,46 @@ async def rimuovi_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     await invia_messaggio("Quale dispositivo vuoi rimuovere?", chat_id)
 
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Nome, IP FROM monitor")
-    cursor.execute(query)
-    dispositivi = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+    with get_db_cursor() as cursor:
+        query = ("SELECT Nome, IP FROM monitor")
+        cursor.execute(query)
+        dispositivi = cursor.fetchall()
 
     pulsanti = []
     for dispositivo in dispositivi:
-        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"rimuovi_{dispositivo[0]}_{dispositivo[1]}"))
+        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"rimuovi:{dispositivo[1]}"))
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
     await invia_messaggio("Seleziona il dispositivo da rimuovere:", chat_id, reply_markup=keyboard)
 
 async def cancella_dispositivo_async(nome_dispositivo, indirizzo_ip):
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
-    query = ("DELETE FROM monitor WHERE Nome = %s AND IP = %s")
-    cursor.execute(query, (nome_dispositivo, indirizzo_ip))
-    cnx.commit()
-
-    cursor.close()
-    cnx.close()
+    with get_db_cursor(commit=True) as cursor:
+        query = ("DELETE FROM monitor WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (nome_dispositivo, indirizzo_ip))
 
     scrivi_log(f"Rimosso Dispositivo : {nome_dispositivo} - {indirizzo_ip}")
-    #await invia_messaggio(f"Dispositivo {nome_dispositivo} ({indirizzo_ip}) rimosso con successo!", config.chat_id)
 
 @richiede_autorizzazione
 async def modifica_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await invia_messaggio("Quale dispositivo vuoi modificare?", chat_id)
 
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-    query = ("SELECT Nome, IP FROM monitor")
-    cursor.execute(query)
-    dispositivi = cursor.fetchall()
-    cursor.close()
-    cnx.close()
+    with get_db_cursor() as cursor:
+        query = ("SELECT Nome, IP FROM monitor")
+        cursor.execute(query)
+        dispositivi = cursor.fetchall()
 
     pulsanti = []
     for dispositivo in dispositivi:
-        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"modifica_{dispositivo[0]}_{dispositivo[1]}"))
+        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"modifica:{dispositivo[1]}"))
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
     await invia_messaggio("Seleziona il dispositivo da modificare:", chat_id, reply_markup=keyboard)
 
 async def aggiorna_nome_dispositivo(nome_vecchio, nome_nuovo, indirizzo_ip):
-    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-    cursor = cnx.cursor()
-
-    query = ("UPDATE monitor SET Nome = %s WHERE Nome = %s AND IP = %s")
-    cursor.execute(query, (nome_nuovo, nome_vecchio, indirizzo_ip))
-    cnx.commit()
-
-    cursor.close()
-    cnx.close()
+    with get_db_cursor(commit=True) as cursor:
+        query = ("UPDATE monitor SET Nome = %s WHERE Nome = %s AND IP = %s")
+        cursor.execute(query, (nome_nuovo, nome_vecchio, indirizzo_ip))
 
     scrivi_log(f"Modificato Dispositivo : {nome_vecchio} - {indirizzo_ip} -> {nome_nuovo} - {indirizzo_ip}")
     await invia_messaggio(f"Dispositivo {nome_vecchio} ({indirizzo_ip}) aggiornato con successo!", config.chat_id)
@@ -1653,20 +1583,9 @@ async def monitoraggio():
             expired_ips = [ip for ip, scadenza in dispositivi_manutenzione_scadenza.items() if datetime.now() > scadenza]
             for ip in expired_ips:
                 print(f"Manutenzione temporanea scaduta per {ip}. Disattivazione...")
-                # Per terminare la manutenzione, dobbiamo recuperare nome dal database
                 try:
-                    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-                    cursor = cnx.cursor()
-                    query = ("SELECT Nome FROM monitor WHERE IP = %s")
-                    cursor.execute(query, (ip,))
-                    res = cursor.fetchone()
-                    if res:
-                        nome = res[0]
-                        # Chiamiamo manutenzione_silent_off
-                        asyncio.create_task(manutenzione_silent_off(nome, ip))
-
-                    cursor.close()
-                    cnx.close()
+                    nome = get_device_name_by_ip(ip)
+                    asyncio.create_task(manutenzione_silent_off(nome, ip))
                 except Exception as e:
                     print(f"Errore reset manutenzione singola scaduta: {e}")
 
@@ -1679,16 +1598,11 @@ async def monitoraggio():
                 tutti_offline = True
                 dispositivi_monitorati = 0
 
-                # Recupera i dispositivi dal database (in un executor se necessario, ma è una query veloce)
-                # Per semplicità lo lascio qui, ma aggiungo try/except per la connessione
                 try:
-                    cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-                    cursor = cnx.cursor()
-                    query = ("SELECT Nome, IP, Maintenence FROM monitor")
-                    cursor.execute(query)
-                    dispositivi = cursor.fetchall()
-                    cursor.close()
-                    cnx.close()
+                    with get_db_cursor() as cursor:
+                        query = ("SELECT Nome, IP, Maintenence FROM monitor")
+                        cursor.execute(query)
+                        dispositivi = cursor.fetchall()
                 except mysql.connector.Error as err:
                     print(f"Errore DB in monitoraggio: {err}")
 
@@ -1718,7 +1632,7 @@ async def monitoraggio():
                     tentativi = 0
 
                     while tentativi < 2:
-                        connessione_attuale = await controlla_connessione(indirizzo_ip)
+                        connessione_attuale = await controlla_connessione(indirizzo_ip, skip_maintenance_check=True)
                         stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
 
                         if connessione_attuale:
@@ -1814,16 +1728,8 @@ async def monitoraggio():
                 for ip in expired_ips:
                     print(f"Manutenzione temporanea scaduta per {ip} (mentre globale ON). Disattivazione...")
                     try:
-                        cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-                        cursor = cnx.cursor()
-                        query = ("SELECT Nome FROM monitor WHERE IP = %s")
-                        cursor.execute(query, (ip,))
-                        res = cursor.fetchone()
-                        if res:
-                            nome = res[0]
-                            asyncio.create_task(manutenzione_silent_off(nome, ip))
-                        cursor.close()
-                        cnx.close()
+                        nome = get_device_name_by_ip(ip)
+                        asyncio.create_task(manutenzione_silent_off(nome, ip))
                     except Exception as e:
                         print(f"Errore reset manutenzione singola scaduta: {e}")
                     dispositivi_manutenzione_scadenza.pop(ip)
@@ -1862,16 +1768,17 @@ def main():
     else:
         scrivi_log("Avvio dello script")
 
-    application = ApplicationBuilder().token(config.bot_token).build()
+    async def post_init(app):
+        # Avvia il loop di monitoraggio nativamente nel contesto dell'event loop di Application
+        asyncio.create_task(avvio_monitoraggio())
+
+    application = ApplicationBuilder().token(config.bot_token).post_init(post_init).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", mostra_menu))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🔧 Manutenzione|📈 Stato Connessioni|📝 Log Giornaliero|⏲️ Manutenzione Temporanea|🖥️ System Advance|⚙️ Gestione Dispositivo|☑️ Start)$"), button_handler))
-    
-    application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))    
-    application.add_handler(CallbackQueryHandler(rimuovi_dispositivo, pattern='rimuovi_dispositivo'))
-    application.add_handler(CallbackQueryHandler(modifica_dispositivo, pattern='modifica_dispositivo'))
+    application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))
 
     # Carica dati manutenzione all'avvio
     manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, global_manual, manutenzione_reason = load_maintenance_data()
@@ -1896,13 +1803,9 @@ def main():
     for ip in expired_ips:
         print(f"Scadenza individuale già passata per {ip}. Resetto DB...")
         try:
-            cnx = mysql.connector.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, database=DB_NAME)
-            cursor = cnx.cursor()
-            query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
-            cursor.execute(query, (ip,))
-            cnx.commit()
-            cursor.close()
-            cnx.close()
+            with get_db_cursor(commit=True) as cursor:
+                query = ("UPDATE monitor SET Maintenence = FALSE WHERE IP = %s")
+                cursor.execute(query, (ip,))
         except Exception as e:
             print(f"Errore reset DB all'avvio per {ip}: {e}")
         dispositivi_manutenzione_scadenza.pop(ip)
@@ -1915,9 +1818,6 @@ def main():
     if report_pending_date:
         print(f"Trovato report in sospeso per la data: {report_pending_date}")
 
-    loop = asyncio.get_event_loop()
-    loop.create_task(avvio_monitoraggio())
-    
     application.run_polling()
 
 if __name__ == '__main__':

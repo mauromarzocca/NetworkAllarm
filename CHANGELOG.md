@@ -80,6 +80,57 @@
 - Versione 8.4 : Creazione dello script di [aggiornamento](./upgrade.py) automatico.
 - Versione 8.4.1 : Migliorata la UI del Bot.
 
----
+## Versione 9
 
-> Per le versioni successive (Versione 9, 10 e successive), fare riferimento alla sezione [Note sulle versioni](README.md#note-sulle-versioni) nel file README.md.
+- Versione 9.0 : Introduzione della funzionalità 'System Advance' che permette di ottenere le informazioni inerenti ad uptime, processi, memoria e spazio disponibile dei dispositivi monitorati.
+- Versione 9.0.1 : Risolte problematiche con Windows.
+- Versione 9.0.2 : Miglioramento della funzione 'System Advance'.
+- Versione 9.0.3 : Migliorato monitoraggio dei File System.
+- Versione 9.0.4 : Introdotto il Monitoraggio della CPU (per Linux).
+- Versione 9.0.5 : Migliorata gestione dei processi su Windows.
+- Versione 9.0.6 : Miglioramento di System Advance per Windows.
+- Versione 9.0.7 : Migliorata la gestione generale di System Advance per Windows.
+- Versione 9.1 : Introdotta una funzionalità che permette di definire la password dell'utente per la connessione SSH all'interno del file [config.py](./config.py).
+- Versione 9.2 : Introdotto un filtro per i FileSystem ed i Dischi da monitorare. In assenza, mostrerà tutti quelli disponibili.
+- Versione 9.3 : Miglioramento generale del codice ed introduzione dinamica del path dei log.
+- Versione 9.4 : Miglioramento della gestione fra il file [main.py](./main.py) e [config.py](./config.py).
+- Versione 9.4.1 : Bug Fix.
+
+## Versione 10
+
+**Nuove Features:**
+- **Installer Unificato (`setup.py`):** Gestisce dipendenze apt/pip, configurazione DB e creazione servizi systemd.
+- **High Availability:** Introdotto sistema di Failover con monitoraggio heartbeat tra due nodi.
+- **Update Manager:** Strumento per aggiornamenti "smart" dal repository GitHub e editing manuale sicuro.
+- **Log Robustness:** Gestione avanzata dei log con buffer offline e protezione da blocchi I/O su mount di rete instabili.
+- **Inline Menus:** Migliorata la UX per la gestione dispositivi.
+
+**Bug Fix e Release:**
+- Versione 10.0.1 : Ripristinata la Manutenzione per dispositivo.
+- Versione 10.0.2 : Miglioramento nella gestione degli errori.
+- Versione 10.0.3 : Miglioramento di [Update_Manager](./update_manager.py).
+- Versione 10.0.4 : Miglioramento nella gestione del nodo secondario.
+- Versione 10.0.5 : Miglioramento nella gestione dei dispositivi.
+- Versione 10.0.6 : Miglioramento della gestione della Manutenzione Temporanea.
+- Versione 10.1 : Nuova gestione delle Manutenzioni.
+- Versione 10.1.1 : Risoluzione problematiche di stabilità e crash a runtime:
+  - Risolto crash in [notify_switch](./notify_switch.py) durante lo stop del failover tramite fallback sicuro sugli hostname.
+  - Risolto crash di unpack tuple in [main](./main.py) (`load_maintenance_data`) in presenza di dati non validi o corrotti.
+  - Corretto l'ordine nel processo di backup in [backup](./backup.py): dump MySQL eseguito e verificato prima della creazione dell'archivio `.tar`.
+  - Rimosso lo svuotamento preventivo a 0 byte del file in [Update_Manager](./update_manager.py) prima dell'apertura dell'editor `vi`.
+  - Risolto errore sul controllo duplicati in modifica dispositivo in [main](./main.py).
+  - Corretta la gestione del logger in [utils](./utils.py) per messaggi ed eventi descrittivi privi di IP.
+  - Pulizia e ottimizzazione delle dipendenze in [requirements.txt](./requirements.txt).
+- Versione 10.2.0 : Security & Controllo Accessi:
+  - Implementato decoratore centralizzato `@richiede_autorizzazione` su tutti gli entry-point Telegram (comandi, tastiere inline, callback e messaggi di testo) con tolleranza formati ID (stringa/intero).
+  - Protezione credenziali MySQL: rimozione del flag `-p` in chiaro da riga di comando per `mysqldump` e `mysql` in [backup](./backup.py), [backup_no_transfer](./backup_no_transfer.py) e [restore](./restore.py), adottando file `.cnf` temporaneo protetto (permessi 0600) via [utils](./utils.py).
+  - Hardening SSH Paramiko in [main](./main.py): chiusura garantita della sessione SSH tramite blocco `finally: ssh.close()` per prevenire leak di socket e caricamento chiavi note di sistema (`known_hosts`).
+  - Auto-eliminazione immediata dei messaggi Telegram contenenti password inserite durante la procedura di System Advance.
+  - Introdotto [config.example.py](./config.example.py) come template tracciato di riferimento e aggiornato [.gitignore](./.gitignore) per la protezione di credenziali, file temporanei e stati locali.
+- Versione 10.3.0 : Database MySQL Connection Pooling & Async Engine:
+  - Introdotto connection pool MySQL (`MySQLConnectionPool`) e context manager `get_db_cursor` per garantire la chiusura sicura di connessioni e cursori anche in presenza di errori ed eliminare il connection leak.
+  - Ottimizzato il monitoraggio evitando query MySQL ridondanti per ciascun ping su nodi già valutati.
+  - Allineato il ciclo asincrono agli standard `python-telegram-bot` v20+ integrando il task `avvio_monitoraggio` tramite l'hook nativo `post_init`, eliminando deprecazioni di `asyncio.get_event_loop()`.
+  - Ridotto il timer di retention messaggi da 7 giorni a massimo 48 ore in [utils](./utils.py) in conformità con i limiti rigidi delle API Telegram, eliminando l'accumulo di coroutine in memoria.
+  - Riorganizzati i `callback_data` delle tastiere inline sotto i 64 byte con delimitatore non ambiguo `:` per prevenire collisioni con underscore nei nomi e aggiunto il gestore di annullamento per la modifica dispositivo.
+  - Eliminati handler callback non raggiungibili (codice morto), soppresse le doppie notifiche identiche all'amministratore e corretto il testo di conteggio nel report giornaliero.
