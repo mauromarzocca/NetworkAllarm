@@ -18,11 +18,11 @@ REPO_NAME = "NetworkAllarm"
 GITHUB_API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/branches"
 RAW_BASE_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}"
 
-# Files to track and update
+# Files to track and update (config.py è escluso: non deve MAI essere scaricato o sovrascritto)
 TRACKED_FILES = [
     "main.py",
     "utils.py",
-    "config.py",
+    "config.example.py",
     "notify_switch.py",
     "failover-monitor.py",
     "archive_log.py",
@@ -367,9 +367,15 @@ def update_via_git():
                 print("Aggiornamento annullato per evitare conflitti con modifiche locali.")
                 return
 
-        # Backup preventivo di config.py
+        # Salvataggio preventivo assoluto del config.py in memoria e su disco
+        saved_config_content = None
         if os.path.exists("config.py"):
-            backup_file("config.py")
+            try:
+                with open("config.py", "r") as f:
+                    saved_config_content = f.read()
+                backup_file("config.py")
+            except Exception as e:
+                print(f"   [Backup] Impossibile leggere config.py: {e}")
 
         # Checkout e Pull
         current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True).strip()
@@ -405,6 +411,21 @@ def update_via_git():
                 print("Aggiornamento annullato.")
                 return
         print("Codice aggiornato con successo.")
+
+        # Ripristino immediato e garantito del config.py dell'utente
+        if saved_config_content is not None:
+            try:
+                with open("config.py", "w") as f:
+                    f.write(saved_config_content)
+                print("   [Config] Configurazione locale protetta e preservata con successo.")
+            except Exception as e:
+                print(f"   [Error] Errore ripristino config.py: {e}")
+
+        # Garantisci che Git non tracci mai config.py localmente
+        try:
+            subprocess.call(["git", "rm", "--cached", "config.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
         # Merge automatico nuove opzioni da config.example.py
         if os.path.exists("config.example.py") and os.path.exists("config.py"):

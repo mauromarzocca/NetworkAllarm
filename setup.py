@@ -89,6 +89,28 @@ def get_input(prompt, default=None, is_password=False, mandatory=False, is_ip=Fa
 def setup_config():
     print("\n--- Configurazione ---")
 
+    if os.path.exists('config.py'):
+        print("\n⚠️ È stato rilevato un file config.py già esistente.")
+        scelta = get_input("Vuoi MANTENERE la configurazione esistente o sovrascriverla da zero? (m/s)", "m").lower()
+        if scelta.startswith('m'):
+            print("Configurazione locale config.py mantenuta.")
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("local_config", "config.py")
+                cfg = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(cfg)
+                return {
+                    'db_user': getattr(cfg, 'DB_USER', 'root'),
+                    'db_pass': getattr(cfg, 'DB_PASSWORD', ''),
+                    'db_host': getattr(cfg, 'DB_HOST', 'localhost'),
+                    'db_name': getattr(cfg, 'DB_NAME', 'NetworkAllarm'),
+                    'dev_name': '', 'dev_ip': '',
+                    'multi_node': len(getattr(cfg, 'NODE_ALIASES', {})) > 1,
+                    'is_secondary': False
+                }
+            except Exception as e:
+                print(f"Errore lettura configurazione ({e}). Procedo con nuova configurazione.")
+
     # 1. Multi-node?
     multi_node = get_input("Il sistema deve avere più nodi? (s/n)", "n").lower().startswith('s')
 
