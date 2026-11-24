@@ -56,6 +56,8 @@ BACKUP_REMOTE_PATH = "PATH/TO/BACKUP"
 
 # Configurazione Failover / High Availability
 FAILOVER_PRIMARY_URL = "http://IP_PRIMARIO:8081/health"
-FAILOVER_SERVICE_NAME = "networkallarm"
+FAILOVER_SERVICE_NAME = "networkallarm.service"
 FAILOVER_CHECK_INTERVAL = 30
+FAILOVER_FAILURE_THRESHOLD = 3   # Numero controlli consecutivi falliti prima di attivare il failover
+FAILOVER_RECOVERY_THRESHOLD = 2  # Numero controlli consecutivi positivi prima di disattivare il failover
 FAILOVER_LOG_FILE = "log/failover-monitor.log"

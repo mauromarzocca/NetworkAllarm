@@ -89,6 +89,28 @@ def get_input(prompt, default=None, is_password=False, mandatory=False, is_ip=Fa
 def setup_config():
     print("\n--- Configurazione ---")
 
+    if os.path.exists('config.py'):
+        print("\n⚠️ È stato rilevato un file config.py già esistente.")
+        scelta = get_input("Vuoi MANTENERE la configurazione esistente o sovrascriverla da zero? (m/s)", "m").lower()
+        if scelta.startswith('m'):
+            print("Configurazione locale config.py mantenuta.")
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("local_config", "config.py")
+                cfg = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(cfg)
+                return {
+                    'db_user': getattr(cfg, 'DB_USER', 'root'),
+                    'db_pass': getattr(cfg, 'DB_PASSWORD', ''),
+                    'db_host': getattr(cfg, 'DB_HOST', 'localhost'),
+                    'db_name': getattr(cfg, 'DB_NAME', 'NetworkAllarm'),
+                    'dev_name': '', 'dev_ip': '',
+                    'multi_node': len(getattr(cfg, 'NODE_ALIASES', {})) > 1,
+                    'is_secondary': False
+                }
+            except Exception as e:
+                print(f"Errore lettura configurazione ({e}). Procedo con nuova configurazione.")
+
     # 1. Multi-node?
     multi_node = get_input("Il sistema deve avere più nodi? (s/n)", "n").lower().startswith('s')
 
@@ -257,10 +279,33 @@ def setup_db(conf):
     except Exception as e:
         print(f"Errore configurazione DB: {e}")
 
+def setup_sudoers(user):
+    print("\n--- Configurazione Permessi Sudoers per Failover Monitor ---")
+    sudoers_content = f"""# Regole sudoers per NetworkAllarm Failover Monitor
+# Consente alla gestione failover di avviare/arrestare il servizio senza password
+{user} ALL=(ALL) NOPASSWD: /bin/systemctl start networkallarm.service, /bin/systemctl stop networkallarm.service, /bin/systemctl restart networkallarm.service, /bin/systemctl status networkallarm.service, /bin/systemctl is-active networkallarm.service, /usr/bin/systemctl start networkallarm.service, /usr/bin/systemctl stop networkallarm.service, /usr/bin/systemctl restart networkallarm.service, /usr/bin/systemctl status networkallarm.service, /usr/bin/systemctl is-active networkallarm.service, /bin/systemctl start NetworkAllarm.service, /bin/systemctl stop NetworkAllarm.service, /bin/systemctl restart NetworkAllarm.service, /bin/systemctl status NetworkAllarm.service, /bin/systemctl is-active NetworkAllarm.service, /usr/bin/systemctl start NetworkAllarm.service, /usr/bin/systemctl stop NetworkAllarm.service, /usr/bin/systemctl restart NetworkAllarm.service, /usr/bin/systemctl status NetworkAllarm.service, /usr/bin/systemctl is-active NetworkAllarm.service
+"""
+    sudoers_path = "/etc/sudoers.d/networkallarm"
+    try:
+        proc = subprocess.Popen(['sudo', 'tee', sudoers_path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+        proc.communicate(input=sudoers_content.encode())
+        if proc.returncode == 0:
+            subprocess.call(['sudo', 'chmod', '0440', sudoers_path])
+            # Validazione visudo preventiva
+            val = subprocess.run(['sudo', 'visudo', '-c', '-f', sudoers_path], capture_output=True, text=True)
+            if val.returncode == 0:
+                print(f"File {sudoers_path} configurato e validato con successo.")
+            else:
+                print(f"⚠️ Attenzione validazione visudo: {val.stderr.strip()}")
+        else:
+            print(f"Impossibile creare {sudoers_path}")
+    except Exception as e:
+        print(f"Errore configurazione sudoers: {e}")
+
 def create_services(conf):
     print("\n--- Configurazione Servizi ---")
     cwd = os.getcwd()
-    user = os.getlogin()
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or getpass.getuser()
     python_exec = sys.executable
 
     # NetworkAllarm Service
@@ -271,6 +316,7 @@ def create_services(conf):
     na_service = f"""[Unit]
 Description=NetworkAllarm Service
 After=network.target mysql.service
+Alias=NetworkAllarm.service
 
 [Service]
 Type=simple
@@ -318,19 +364,25 @@ WantedBy=multi-user.target
                 else:
                     print(f"Errore creazione {path}")
 
-        write_service("NetworkAllarm.service", na_service)
+        # Standardizziamo il nome in minuscolo con symlink/alias retrocompatibile
+        write_service("networkallarm.service", na_service)
+        try:
+            subprocess.call(['sudo', 'ln', '-sf', '/etc/systemd/system/networkallarm.service', '/etc/systemd/system/NetworkAllarm.service'])
+        except Exception:
+            pass
 
         services_to_enable = []
 
         # Se NON è un nodo secondario, abilita NetworkAllarm all'avvio.
         # Sul nodo secondario, sarà failover-monitor a gestirlo.
         if not (conf.get('multi_node') and conf.get('is_secondary')):
-            services_to_enable.append("NetworkAllarm.service")
+            services_to_enable.append("networkallarm.service")
 
         if conf.get('multi_node') and conf.get('is_secondary'):
             print("Configurazione nodo secondario: Creo Failover Monitor Service.")
             write_service("failover-monitor.service", fm_service)
             services_to_enable.append("failover-monitor.service")
+            setup_sudoers(user)
 
         print("Ricaricamento daemon systemd...")
         subprocess.call(['sudo', 'systemctl', 'daemon-reload'])

@@ -327,11 +327,11 @@ flowchart LR
 ### Fase 4 — Release `v10.4.0` (Alta Disponibilità, Failover & Systemd)
 > **Obiettivo:** Rendere il cluster a doppio nodo robusto, esente da split-brain e integrato con systemd.
 
-- [ ] **Fix 7.1 (Systemd Case-Sensitivity):** Allineamento del nome del servizio tra `config.py` (`NetworkAllarm.service`) e `setup.py`.
-- [ ] **Fix 7.2 (Permessi Sudoers):** Generazione in `setup.py` della configurazione sudoers per consentire a `failover-monitor` il riavvio del servizio senza password.
-- [ ] **Fix 7.3 (Debounce Failover):** Aggiunta di una soglia di tolleranza su `failover-monitor.py` (es. 3 controlli falliti consecutivi con ritardo di 10s) per prevenire lo switch su micro-disconnessioni.
-- [ ] **Fix 7.4 (Health Check Dinamico):** Potenziamento dell'endpoint `/health` per verificare l'effettiva reattività del monitoraggio e la raggiungibilità del DB.
-- [ ] **Fix 7.5 (Update Manager via Git):** Conversione di `update_manager.py` all'utilizzo dei comandi nativi di Git (`git fetch`, `git checkout`, `git pull`).
+- [x] **Fix 7.1 (Systemd Case-Sensitivity):** Allineamento del nome del servizio in `networkallarm.service` (lowercase) con supporto case-insensitive e retrocompatibilità per `NetworkAllarm.service` in `config.py`, `setup.py` e `failover-monitor.py`.
+- [x] **Fix 7.2 (Permessi Sudoers):** Generazione automatica in `setup.py` delle regole sudoers in `/etc/sudoers.d/networkallarm` con validazione `visudo` per consentire a `failover-monitor` l'avvio e arresto senza password.
+- [x] **Fix 7.3 (Debounce Failover):** Aggiunta soglia di riprova configurabile su `failover-monitor.py` (3 controlli consecutivi falliti prima dell'attivazione, 2 consecutivi positivi prima del rilascio) per prevenire lo switch su micro-disconnessioni e split-brain.
+- [x] **Fix 7.4 (Health Check Dinamico):** Potenziamento dell'endpoint `/health` in `main.py` per verificare l'effettiva raggiungibilità del DB MySQL e il battito cardiaco del loop di monitoraggio, restituendo HTTP 503 se degradato.
+- [x] **Fix 7.5 (Update Manager via Git):** Conversione di `update_manager.py` all'utilizzo dei comandi nativi di Git (`git fetch`, `git checkout`, `git pull`) con gestione stash e merge automatico da `config.example.py`.
 
 **Criteri di Accettazione e Test Fase 4:**
 - Simulazione caduta transitoria (1 pacchetto perso): il failover NON si attiva.
@@ -343,9 +343,9 @@ flowchart LR
 ### Fase 5 — Release `v10.5.0` (Igiene Repository & Documentazione)
 > **Obiettivo:** Pulizia definitiva del repository, completamento documentazione e standard di rilascio.
 
-- [ ] **Fix 8.2 (Pulizia AppleDouble):** Rimozione dei file `._*` e risoluzione definitiva del warning sull'indice dei pack di Git.
-- [ ] **Fix 8.3 (`.gitignore` completo):** Esclusione di `*.bak`, `*.sql`, `stato/*`, `log/*`, `__pycache__` e `._*`.
-- [ ] **Fix 8.4 (Changelog & Contributing):** Compilazione dettagliata di `CHANGELOG.md` per le versioni 9, 10 e 10.1, e stesura delle linee guida in `CONTRIBUTING.md`.
+- [x] **Fix 8.2 (Pulizia AppleDouble):** Rimozione definitiva di tutti i file `._*` e risoluzione totale del warning Git sull'indice dei pack (`non-monotonic index`).
+- [x] **Fix 8.3 (`.gitignore` completo):** Esclusione strutturata di `*.bak`, `*.backup`, `*.sql`, `*.tar`, `*.gz`, `stato/*`, `log/*`, `__pycache__`, editor config (`.vscode/`, `.idea/`) e `._*`.
+- [x] **Fix 8.4 (Changelog & Contributing):** Compilazione dettagliata di `CHANGELOG.md` per le versioni 9 e 10 (con tutte le sotto-release da 10.1.1 a 10.5.0) e stesura completa delle linee guida per i contributori in `CONTRIBUTING.md`.
 
 ---
 

@@ -134,3 +134,14 @@
   - Ridotto il timer di retention messaggi da 7 giorni a massimo 48 ore in [utils](./utils.py) in conformità con i limiti rigidi delle API Telegram, eliminando l'accumulo di coroutine in memoria.
   - Riorganizzati i `callback_data` delle tastiere inline sotto i 64 byte con delimitatore non ambiguo `:` per prevenire collisioni con underscore nei nomi e aggiunto il gestore di annullamento per la modifica dispositivo.
   - Eliminati handler callback non raggiungibili (codice morto), soppresse le doppie notifiche identiche all'amministratore e corretto il testo di conteggio nel report giornaliero.
+- Versione 10.4.0 : Alta Disponibilità, Failover & Systemd:
+  - Standardizzato il nome del servizio systemd in `networkallarm.service` (lowercase) con supporto case-insensitive e retrocompatibilità per `NetworkAllarm.service` in [setup](./setup.py), [failover-monitor](./failover-monitor.py) e [config](./config.example.py).
+  - Generazione automatica in [setup](./setup.py) delle regole `sudoers` (`/etc/sudoers.d/networkallarm`) per consentire a [failover-monitor](./failover-monitor.py) l'avvio, l'arresto e il controllo del servizio senza richiesta di password.
+  - Introdotta soglia di tolleranza e debounce (retry threshold configurabile) in [failover-monitor](./failover-monitor.py) per prevenire flapping, falsi allarmi e split-brain causati da jitter o micro-interruzioni di rete.
+  - Health check dinamico su `/health` in [main](./main.py): verifica dello stato effettivo della connessione MySQL e del battito cardiaco del loop di monitoraggio, restituendo HTTP 503 Service Unavailable in caso di stallo o degrado.
+  - [Update_Manager](./update_manager.py) nativo Git: migrazione da download HTTP di singoli file a operazioni native `git fetch`, `git pull` e checkout del branch con merge automatico e preservazione della configurazione locale.
+- Versione 10.5.0 : Igiene Repository & Documentazione:
+  - Pulizia completa dei file AppleDouble (`._*`) generati da macOS, eliminando gli avvisi di indici non monotonici nel repository Git.
+  - Consolidamento ed estensione di [.gitignore](./.gitignore) con esclusione strutturata di backup (`*.bak`, `*.backup`), dump SQL (`*.sql`), archivi (`*.tar`), file di stato e log.
+  - Redazione completa delle linee guida per i contributori in [CONTRIBUTING.md](./CONTRIBUTING.md) (workflow branch, convenzioni di commit semantiche, standard di codice, procedure di testing e gestione configurazioni sicure).
+  - Allineamento e sincronizzazione esaustiva di [CHANGELOG.md](./CHANGELOG.md) per tutte le versioni 9 e 10.

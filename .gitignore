@@ -25,3 +25,12 @@ log/*.log
 log/*/*.log
 *.sql
 *.tar
+*.gz
+*.bak
+*.backup
+*.swp
+*~
+
+# IDE e Editor
+.idea/
+.vscode/
