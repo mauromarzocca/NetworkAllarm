@@ -9,6 +9,9 @@ bot_token = 'IL_TUO_BOT_TOKEN'
 chat_id = 'IL_TUO_CHAT_ID'
 # Lista degli ID numerici Telegram autorizzati a interagire con il bot
 autorizzati = [123456789]
+# Auto-cancellazione messaggi Telegram dopo un periodo (opzionale, default: False)
+AUTO_DELETE_MESSAGES = False
+MESSAGE_RETENTION_SECONDS = 172740  # Massimo 48 ore (172740s) secondo le API Telegram
 
 # Configurazione statica indirizzi di fallback (importati nel DB MySQL al primo avvio)
 indirizzi_ping = [

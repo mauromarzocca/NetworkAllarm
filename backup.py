@@ -12,15 +12,14 @@ from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
 from utils import invia_messaggio, scrivi_log, mysql_temp_config, log_queue
 
 # Configurazione base centralizzata con fallback
-project_name = getattr(config, 'PROJECT_NAME', 'NetworkAllarm')
-backup_dir_name = getattr(config, 'BACKUP_DIR_NAME', 'Backup NetworkAllarm')
-remote_host = getattr(config, 'BACKUP_REMOTE_HOST', None)
-remote_path = getattr(config, 'BACKUP_REMOTE_PATH', None)
-
 # Percorsi
 script_dir = os.path.dirname(os.path.abspath(__file__))
-project_dir = os.path.abspath(os.path.join(script_dir, "..", project_name))
+project_dir = script_dir
+project_name = getattr(config, 'PROJECT_NAME', os.path.basename(project_dir))
+backup_dir_name = getattr(config, 'BACKUP_DIR_NAME', 'Backup NetworkAllarm')
 backup_dir = os.path.abspath(os.path.join(script_dir, "..", backup_dir_name))
+remote_host = getattr(config, 'BACKUP_REMOTE_HOST', None)
+remote_path = getattr(config, 'BACKUP_REMOTE_PATH', None)
 
 # Nome del backup con data
 backup_filename = f"{project_name}_{datetime.datetime.now().strftime('%Y%m%d')}.tar"

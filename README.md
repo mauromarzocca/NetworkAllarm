@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.7.0
+Versione : 10.7.1
 
 ![logo](/img/logo.png)
 
@@ -314,6 +314,10 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
     - Riprogettazione del loop di monitoraggio con contatori di stato progressivi e loop non bloccante.
     - Soglia di disconnessione configurabile a 5 fallimenti consecutivi (`OFFLINE_THRESHOLD`) e ripristino stabile a 3 successi consecutivi (`ONLINE_THRESHOLD`).
     - Eliminazione totale dei falsi allarmi e del flapping su reti Wi-Fi e apparati a risparmio energetico.
+  - Versione 10.7.1 : Consolidamento Pre-Fase 11 (Bugfix a 3 Livelli):
+    - Correzione scope variabili globali in `main()`, flush sincrono dei log su switch di nodo e verifica codici di uscita in failover.
+    - Singleton Bot per prevenire socket leak, auto-cancellazione messaggi resa opzionale, risoluzione collisioni `renumber_ids()` e pulizia dump SQL.
+    - Supporto per Hostname FQDN (RFC 1123), allineamento heartbeat health check e gestione `failover-monitor.service` in Update Manager.
 
 ---
 

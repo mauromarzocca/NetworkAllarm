@@ -56,7 +56,10 @@ def validate_ip(ip_str):
         ipaddress.ip_address(ip_str)
         return True
     except ValueError:
-        return False
+        pass
+    import re
+    hostname_regex = re.compile(r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$')
+    return bool(len(ip_str) <= 253 and hostname_regex.match(ip_str))
 
 def get_input(prompt, default=None, is_password=False, mandatory=False, is_ip=False):
     while True:
@@ -249,7 +252,7 @@ def setup_db(conf):
         cursor = cnx.cursor()
 
         # Create DB
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {conf['db_name']}")
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{conf['db_name']}`")
         print(f"Database {conf['db_name']} verificato.")
 
         cnx.database = conf['db_name']
@@ -259,7 +262,7 @@ def setup_db(conf):
         CREATE TABLE IF NOT EXISTS monitor (
             ID INT AUTO_INCREMENT PRIMARY KEY,
             Nome VARCHAR(255) NOT NULL,
-            IP VARCHAR(15) NOT NULL UNIQUE,
+            IP VARCHAR(255) NOT NULL UNIQUE,
             Maintenence BOOLEAN DEFAULT FALSE
         ) AUTO_INCREMENT=1;
         """

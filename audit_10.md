@@ -363,6 +363,7 @@ flowchart LR
 - [x] **Release `v10.6.2` (Automazione Requisiti Update Manager):** Verifica automatica e non interattiva delle dipendenze da `requirements.txt`: se già soddisfatte, l'aggiornamento procede direttamente senza richiedere conferme all'utente.
 - [x] **Release `v10.6.3` (Resilienza all'Avvio, Systemd Network-Online & Fallback Sicuri):** Connessione MySQL iniziale con retry automatico al boot, inizializzazione pulita in `main()`, fallback universale con `getattr()` per configurazioni opzionali e unit systemd legate a `network-online.target`.
 - [x] **Release `v10.7.0` (Monitoraggio Isteresi Anti-Flapping & Loop Non Bloccante):** Motore di monitoraggio non bloccante con contatori di stato progressivi (stile Zabbix/Nagios), soglia di disconnessione a 5 fallimenti consecutivi (`OFFLINE_THRESHOLD`) e ripristino stabile a 3 successi consecutivi (`ONLINE_THRESHOLD`), con parametrizzazione trasparente in `config.py`.
+- [x] **Release `v10.7.1` (Consolidamento Pre-Fase 11 - Bugfix a 3 Livelli):** Risolti 12 punti di criticità su tutti i moduli: correzione scope variabili in `main()`, flush log in `notify_switch.py`, verifica codici systemd in `failover-monitor.py`, percorsi assoluti sicuri in backup/restore, singleton Bot e retention opzionale in `utils.py`, `ORDER BY ID` in `renumber_ids()`, supporto Hostname FQDN (RFC 1123), supporto nodi secondari in Update Manager e allineamento schema database (`IP VARCHAR(255)`).
 
 ---
 

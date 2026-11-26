@@ -10,14 +10,12 @@ import config
 from config import DB_USER, DB_PASSWORD, DB_NAME, chat_id
 from utils import invia_messaggio, scrivi_log, mysql_temp_config, log_queue
 
-# Configurazione base centralizzata con fallback
-project_name = getattr(config, 'PROJECT_NAME', 'NetworkAllarm')
-backup_dir_name = getattr(config, 'BACKUP_DIR_NAME', 'Backup NetworkAllarm')
-
 # Percorsi
 script_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = script_dir
+project_name = getattr(config, 'PROJECT_NAME', os.path.basename(project_dir))
+backup_dir_name = getattr(config, 'BACKUP_DIR_NAME', 'Backup NetworkAllarm')
 backup_dir = os.path.abspath(os.path.join(script_dir, "..", backup_dir_name))
-project_dir = os.path.abspath(os.path.join(script_dir, "..", project_name))
 
 def safe_extract(tar, path="."):
     """Funzione per estrarre evitando path traversal o errori di permessi."""
@@ -65,7 +63,12 @@ def seleziona_backup():
 
 async def esegui_restore(selected_backup):
     """Esegue l'estrazione dell'archivio tar e il ripristino del database MySQL."""
+    db_backup_file = None
     try:
+        # Verifica preventiva presenza di mysql client
+        if not shutil.which("mysql"):
+            raise FileNotFoundError("Comando 'mysql' non trovato nel sistema. Installa 'default-mysql-client' o 'mariadb-client'.")
+
         # Rimuove la cartella __pycache__ se esiste
         pycache_path = os.path.join(project_dir, "__pycache__")
         if os.path.exists(pycache_path):
@@ -112,6 +115,14 @@ async def esegui_restore(selected_backup):
         scrivi_log("Errore Ripristino", nome_dispositivo="Server", indirizzo_ip="127.0.0.1")
         log_queue.join()
         sys.exit(1)
+    finally:
+        # Pulizia garantita file SQL di dump estratto
+        if db_backup_file and os.path.exists(db_backup_file):
+            try:
+                os.remove(db_backup_file)
+                print("🧹 File SQL di dump temporaneo rimosso con successo.")
+            except Exception as e:
+                print(f"Avviso rimozione file temporaneo {db_backup_file}: {e}")
 
 def main():
     selected_backup = seleziona_backup()

@@ -10,10 +10,8 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
-from config import cartella_log_base, credenziali
 import mysql.connector
 from mysql.connector import pooling
-from config import DB_USER, DB_PASSWORD
 import socket
 from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release, invia_messaggio_sync
 import ipaddress
@@ -26,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.7.0"
+version = "10.7.1"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -38,6 +36,8 @@ def get_nodo_corrente():
     node_aliases = getattr(config, 'NODE_ALIASES', {})
     return node_aliases.get(hostname, hostname)
 
+cartella_log_base = getattr(config, 'cartella_log_base', 'log')
+credenziali = getattr(config, 'credenziali', {})
 DB_HOST = getattr(config, 'DB_HOST', 'localhost')
 DB_NAME = getattr(config, 'DB_NAME', 'NetworkAllarm')
 DB_USER = getattr(config, 'DB_USER', 'root')
@@ -132,7 +132,8 @@ def check_system_health():
     time_since_heartbeat = now - last_monitor_heartbeat
     time_since_startup = now - _health_startup_time
     # Finestra di tolleranza: 3 volte l'intervallo di controllo (minimo 180s)
-    max_stall = max(getattr(config, 'intervallo_controllo', 60) * 3, 180)
+    check_interval = getattr(config, 'CHECK_INTERVAL', getattr(config, 'intervallo_controllo', 30))
+    max_stall = max(check_interval * 3, 180)
 
     # Durante i primi 120 secondi dall'avvio diamo un grace period al loop di inizializzazione
     if time_since_startup < 120 or time_since_heartbeat <= max_stall:
@@ -207,14 +208,19 @@ def import_addresses(cursor):
             print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
 
 def renumber_ids(cursor):
-    # Rinumerare gli ID della tabella monitor per renderli sequenziali.
+    # Rinumerare gli ID della tabella monitor per renderli sequenziali in modo sicuro
     try:
+        cursor.execute("SELECT COUNT(*) FROM monitor")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            cursor.execute("ALTER TABLE monitor AUTO_INCREMENT = 1;")
+            return
         cursor.execute("SET @count = 0;")
-        cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
+        cursor.execute("UPDATE monitor SET ID = (@count:= @count + 1) ORDER BY ID;")
         cursor.execute("ALTER TABLE monitor AUTO_INCREMENT = 1;")
         print("ID rinumerati con successo.")
     except mysql.connector.Error as err:
-        print(f"Errore durante la rinumerazione degli ID: {err}")
+        print(f"Avviso durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
     # Crea la tabella monitor all'interno del database NetworkAllarm.
@@ -226,11 +232,15 @@ def create_database_and_table():
             CREATE TABLE IF NOT EXISTS monitor (
                 ID INT AUTO_INCREMENT PRIMARY KEY,
                 Nome VARCHAR(255) NOT NULL,
-                IP VARCHAR(15) NOT NULL UNIQUE,
+                IP VARCHAR(255) NOT NULL UNIQUE,
                 Maintenence BOOLEAN DEFAULT FALSE
             ) AUTO_INCREMENT=1;
             '''
             cursor.execute(create_table_query)
+            try:
+                cursor.execute("ALTER TABLE monitor MODIFY COLUMN IP VARCHAR(255) NOT NULL UNIQUE;")
+            except Exception:
+                pass
             import_addresses(cursor)
             renumber_ids(cursor)
             print("Database e tabella monitor pronti all'uso.")
@@ -1075,6 +1085,26 @@ async def invia_info_avanzate(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
     await invia_messaggio("Inserisci l'username per la connessione SSH:", chat_id)
 
+def is_valid_ip_or_host(target):
+    """
+    Verifica se il target inserito è un indirizzo IP valido (IPv4/IPv6)
+    oppure un hostname/FQDN conforme allo standard RFC 1123.
+    """
+    if not target or not isinstance(target, str):
+        return False
+    target = target.strip()
+    try:
+        ipaddress.ip_address(target)
+        return True
+    except ValueError:
+        pass
+
+    # Regex validazione hostname / dominio locale / FQDN
+    hostname_regex = re.compile(
+        r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
+    )
+    return bool(len(target) <= 253 and hostname_regex.match(target))
+
 @richiede_autorizzazione
 async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     azione = context.user_data.get('azione')
@@ -1082,16 +1112,14 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nome_dispositivo = update.message.text
         context.user_data['nome_dispositivo'] = nome_dispositivo
         context.user_data['azione'] = 'aggiungi_dispositivo_indirizzo'
-        await invia_messaggio("Inserisci l'indirizzo IP del dispositivo (es. 192.168.1.100):", update.effective_chat.id)
+        await invia_messaggio("Inserisci l'indirizzo IP o l'hostname del dispositivo (es. 192.168.1.100 o nas.local):", update.effective_chat.id)
     elif azione == 'aggiungi_dispositivo_indirizzo':
-        indirizzo_ip = update.message.text
+        indirizzo_ip = update.message.text.strip()
         nome_dispositivo = context.user_data.get('nome_dispositivo')
 
-        # Verifica se l'indirizzo IP è valido
-        try:
-            ipaddress.ip_address(indirizzo_ip)
-        except ValueError:
-            await invia_messaggio("⚠️ Indirizzo IP non valido. Riprova.", update.effective_chat.id)
+        # Verifica se l'indirizzo IP o hostname è valido
+        if not is_valid_ip_or_host(indirizzo_ip):
+            await invia_messaggio("⚠️ Indirizzo IP o Hostname non valido. Riprova:", update.effective_chat.id)
             return
 
         # Verifica se l'indirizzo IP è già presente nel database
@@ -1139,19 +1167,17 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['nuovo_nome'] = nuovo_nome
         context.user_data['azione'] = 'modifica_indirizzo_nome'
 
-        await invia_messaggio("Inserisci il nuovo indirizzo IP del dispositivo:", update.effective_chat.id)
+        await invia_messaggio("Inserisci il nuovo indirizzo IP o hostname del dispositivo:", update.effective_chat.id)
 
     elif azione == 'modifica_indirizzo_nome':
-        nuovo_indirizzo_ip = update.message.text
+        nuovo_indirizzo_ip = update.message.text.strip()
         vecchio_nome = context.user_data.get('nome_dispositivo')
         vecchio_indirizzo_ip = context.user_data.get('indirizzo_ip')
         nuovo_nome = context.user_data.get('nuovo_nome')
 
-        # Verifica se l'indirizzo IP è valido
-        try:
-            ipaddress.ip_address(nuovo_indirizzo_ip)
-        except ValueError:
-            await invia_messaggio("⚠️ Indirizzo IP non valido. Riprova.", update.effective_chat.id)
+        # Verifica se l'indirizzo IP o hostname è valido
+        if not is_valid_ip_or_host(nuovo_indirizzo_ip):
+            await invia_messaggio("⚠️ Indirizzo IP o Hostname non valido. Riprova:", update.effective_chat.id)
             return
 
         # Verifica se l'indirizzo IP è lo stesso di quello già presente
@@ -1866,6 +1892,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))
 
     # Carica dati manutenzione all'avvio
+    global manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date, manutenzione_reason
     manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, global_manual, manutenzione_reason = load_maintenance_data()
 
     # Check globale
