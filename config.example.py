@@ -9,6 +9,9 @@ bot_token = 'IL_TUO_BOT_TOKEN'
 chat_id = 'IL_TUO_CHAT_ID'
 # Lista degli ID numerici Telegram autorizzati a interagire con il bot
 autorizzati = [123456789]
+# Auto-cancellazione messaggi Telegram dopo un periodo (opzionale, default: False)
+AUTO_DELETE_MESSAGES = False
+MESSAGE_RETENTION_SECONDS = 172740  # Massimo 48 ore (172740s) secondo le API Telegram
 
 # Configurazione statica indirizzi di fallback (importati nel DB MySQL al primo avvio)
 indirizzi_ping = [
@@ -41,8 +44,12 @@ HEALTH_SERVER_PORT = 8081
 MAX_WORKERS = 10
 
 # Impostazioni Ping e Tolleranza di Rete (Wi-Fi, IoT, EEE)
-PING_COUNT = 3      # Numero di pacchetti ICMP inviati (default: 3, ideale per tollerare sleep IoT ed EEE)
-PING_TIMEOUT = 1    # Timeout in secondi per ciascun pacchetto inviato
+PING_COUNT = 3               # Numero di pacchetti ICMP inviati per controllo (default: 3)
+PING_TIMEOUT = 1             # Timeout in secondi per ciascun pacchetto inviato
+CHECK_INTERVAL = 30          # Secondi di pausa tra un ciclo di scansione e il successivo (default: 30)
+OFFLINE_THRESHOLD = 5        # Controlli consecutivi falliti prima di dichiarare OFFLINE (default: 5)
+ONLINE_THRESHOLD = 3         # Controlli consecutivi riusciti prima di dichiarare ONLINE (default: 3)
+TEMPO_NOTIFICA_DISPOSITIVO = 1800  # Secondi tra i promemoria periodici per dispositivi offline (default: 30 min)
 
 # Identificazione Nodi (Hostname -> Nome visualizzato)
 PRIMARY_HOSTNAME = "first_device"

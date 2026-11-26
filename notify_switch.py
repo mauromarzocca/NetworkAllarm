@@ -106,6 +106,11 @@ def main():
 
     except Exception as e:
         print(f"Errore critico in notify_switch: {e}", file=sys.stderr)
+    finally:
+        try:
+            utils.log_queue.join()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()

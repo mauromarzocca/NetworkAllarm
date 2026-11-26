@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.6.3
+Versione : 10.7.1
 
 ![logo](/img/logo.png)
 
@@ -310,6 +310,14 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - Versione 10.6.3 : Resilienza all'Avvio, Systemd Network-Online & Fallback Sicuri:
     - Connessione MySQL iniziale con retry automatico al boot e inizializzazione protetta dentro `main()`.
     - Fallback sicuri su tutte le variabili di configurazione e dipendenza `network-online.target` nei servizi systemd.
+  - Versione 10.7.0 : Monitoraggio Isteresi Anti-Flapping & Loop Non Bloccante:
+    - Riprogettazione del loop di monitoraggio con contatori di stato progressivi e loop non bloccante.
+    - Soglia di disconnessione configurabile a 5 fallimenti consecutivi (`OFFLINE_THRESHOLD`) e ripristino stabile a 3 successi consecutivi (`ONLINE_THRESHOLD`).
+    - Eliminazione totale dei falsi allarmi e del flapping su reti Wi-Fi e apparati a risparmio energetico.
+  - Versione 10.7.1 : Consolidamento Pre-Fase 11 (Bugfix a 3 Livelli):
+    - Correzione scope variabili globali in `main()`, flush sincrono dei log su switch di nodo e verifica codici di uscita in failover.
+    - Singleton Bot per prevenire socket leak, auto-cancellazione messaggi resa opzionale, risoluzione collisioni `renumber_ids()` e pulizia dump SQL.
+    - Supporto per Hostname FQDN (RFC 1123), allineamento heartbeat health check e gestione `failover-monitor.service` in Update Manager.
 
 ---
 

@@ -241,40 +241,39 @@ def merge_config(local_path, remote_content):
     else:
         print("   [Config] No new items found to merge.")
 
+def get_active_services():
+    """
+    Rileva tutti i servizi NetworkAllarm attualmente attivi nel sistema.
+    Supporta sia il nodo primario (networkallarm.service) sia il nodo secondario (failover-monitor.service).
+    """
+    active_services = []
+    candidates = [
+        ("networkallarm.service", "NetworkAllarm.service"),
+        ("failover-monitor.service", "failover-monitor.service")
+    ]
+    for pri, alt in candidates:
+        for name in [pri, alt]:
+            try:
+                if subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0:
+                    if name not in active_services:
+                        active_services.append(name)
+                    break
+            except Exception:
+                pass
+    return active_services
+
 def get_service_name():
     """
-    Detects the installed service name (case-insensitive check).
-    Returns 'networkallarm.service' or 'NetworkAllarm.service'.
+    Ritorna la lista dei servizi attivi o il servizio primario di default.
     """
-    candidates = ["networkallarm.service", "NetworkAllarm.service"]
-
-    # 1. Check for active service
-    for name in candidates:
-        try:
-            if subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0:
-                return name
-        except FileNotFoundError:
-            return candidates[0] # systemctl not found
-
-    # 2. Check for existence (loaded)
-    for name in candidates:
-        try:
-            output = subprocess.check_output(["systemctl", "show", "-p", "LoadState", name], text=True)
-            if "LoadState=loaded" in output:
-                return name
-        except Exception:
-            pass
-
-    return candidates[0] # Default
+    active = get_active_services()
+    if active:
+        return ", ".join(active)
+    return "networkallarm.service"
 
 def is_service_active():
-    """Checks if the service is active."""
-    service_name = get_service_name()
-    try:
-        subprocess.check_call(["systemctl", "is-active", "--quiet", service_name])
-        return True
-    except subprocess.CalledProcessError:
-        return False
+    """Verifica se almeno un servizio NetworkAllarm è attualmente attivo."""
+    return len(get_active_services()) > 0
 
 def create_update_flag():
     """Creates a flag file 'stato/.post_update'."""
@@ -291,18 +290,19 @@ def create_update_flag():
 
 def restart_service():
     """
-    Restarts the service.
+    Riavvia tutti i servizi rilevati come attivi (supporta primario e failover-monitor).
     """
-    service_name = get_service_name()
-    print(f"\n   [Service] Restarting {service_name}...")
+    services = get_active_services()
+    if not services:
+        services = ["networkallarm.service"]
 
-    # Restart service
-    try:
-        # Using sudo is expected here as services require privileges
-        subprocess.call(["sudo", "systemctl", "restart", service_name])
-        print("   [Service] Restart command issued.")
-    except Exception as e:
-        print(f"   [Error] Failed to restart service: {e}")
+    for svc in services:
+        print(f"\n   [Service] Riavvio di {svc}...")
+        try:
+            subprocess.call(["sudo", "systemctl", "restart", svc])
+            print(f"   [Service] Comando di riavvio inviato a {svc}.")
+        except Exception as e:
+            print(f"   [Error] Errore riavvio {svc}: {e}")
 
 def manual_update_editor():
     """

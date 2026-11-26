@@ -115,9 +115,10 @@ def manage_service():
             if consecutive_successes >= FAILOVER_RECOVERY_THRESHOLD:
                 log(f"Primary OK confermato ({consecutive_successes}/{FAILOVER_RECOVERY_THRESHOLD}) -> Arresto servizio failover locale ({service_name})")
                 res = subprocess.run(["sudo", "systemctl", "stop", service_name], check=False)
-                if res.returncode != 0:
-                    log(f"⚠️ Errore durante l'arresto del servizio {service_name} (codice {res.returncode})")
-                run_notify_switch("STOP")
+                if res.returncode == 0:
+                    run_notify_switch("STOP")
+                else:
+                    log(f"⚠️ Errore durante l'arresto del servizio {service_name} (codice {res.returncode}) - Notifica switch annullata")
             else:
                 log(f"Primary OK ({consecutive_successes}/{FAILOVER_RECOVERY_THRESHOLD}) -> In attesa di conferme consecutive prima del rilascio...")
     else:
@@ -129,9 +130,10 @@ def manage_service():
             if consecutive_failures >= FAILOVER_FAILURE_THRESHOLD:
                 log(f"Primary DOWN confermato ({consecutive_failures}/{FAILOVER_FAILURE_THRESHOLD}) -> Avvio servizio failover locale ({service_name})")
                 res = subprocess.run(["sudo", "systemctl", "start", service_name], check=False)
-                if res.returncode != 0:
-                    log(f"⚠️ Errore durante l'avvio del servizio {service_name} (codice {res.returncode})")
-                run_notify_switch("START")
+                if res.returncode == 0:
+                    run_notify_switch("START")
+                else:
+                    log(f"⚠️ Errore durante l'avvio del servizio {service_name} (codice {res.returncode}) - Notifica switch annullata")
             else:
                 log(f"Transitorio o jitter di rete: riprova in corso ({consecutive_failures}/{FAILOVER_FAILURE_THRESHOLD})...")
 

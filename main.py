@@ -10,10 +10,8 @@ from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, Re
 from telegram.ext import ApplicationBuilder, CommandHandler,CallbackContext, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import pytz
 import config
-from config import cartella_log_base, credenziali
 import mysql.connector
 from mysql.connector import pooling
-from config import DB_USER, DB_PASSWORD
 import socket
 from utils import scrivi_log, invia_messaggio, invia_messaggi_divisi, modifica_messaggio, get_current_log_path, cancella_messaggio_dopo_delay, check_new_release, invia_messaggio_sync
 import ipaddress
@@ -26,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.6.3"
+version = "10.7.1"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -38,6 +36,8 @@ def get_nodo_corrente():
     node_aliases = getattr(config, 'NODE_ALIASES', {})
     return node_aliases.get(hostname, hostname)
 
+cartella_log_base = getattr(config, 'cartella_log_base', 'log')
+credenziali = getattr(config, 'credenziali', {})
 DB_HOST = getattr(config, 'DB_HOST', 'localhost')
 DB_NAME = getattr(config, 'DB_NAME', 'NetworkAllarm')
 DB_USER = getattr(config, 'DB_USER', 'root')
@@ -132,7 +132,8 @@ def check_system_health():
     time_since_heartbeat = now - last_monitor_heartbeat
     time_since_startup = now - _health_startup_time
     # Finestra di tolleranza: 3 volte l'intervallo di controllo (minimo 180s)
-    max_stall = max(getattr(config, 'intervallo_controllo', 60) * 3, 180)
+    check_interval = getattr(config, 'CHECK_INTERVAL', getattr(config, 'intervallo_controllo', 30))
+    max_stall = max(check_interval * 3, 180)
 
     # Durante i primi 120 secondi dall'avvio diamo un grace period al loop di inizializzazione
     if time_since_startup < 120 or time_since_heartbeat <= max_stall:
@@ -207,14 +208,19 @@ def import_addresses(cursor):
             print(f"Errore nell'inserimento dell'indirizzo {indirizzo['nome']} ({indirizzo['indirizzo']}): {err}")
 
 def renumber_ids(cursor):
-    # Rinumerare gli ID della tabella monitor per renderli sequenziali.
+    # Rinumerare gli ID della tabella monitor per renderli sequenziali in modo sicuro
     try:
+        cursor.execute("SELECT COUNT(*) FROM monitor")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            cursor.execute("ALTER TABLE monitor AUTO_INCREMENT = 1;")
+            return
         cursor.execute("SET @count = 0;")
-        cursor.execute("UPDATE monitor SET ID = @count:= @count + 1;")
+        cursor.execute("UPDATE monitor SET ID = (@count:= @count + 1) ORDER BY ID;")
         cursor.execute("ALTER TABLE monitor AUTO_INCREMENT = 1;")
         print("ID rinumerati con successo.")
     except mysql.connector.Error as err:
-        print(f"Errore durante la rinumerazione degli ID: {err}")
+        print(f"Avviso durante la rinumerazione degli ID: {err}")
 
 def create_database_and_table():
     # Crea la tabella monitor all'interno del database NetworkAllarm.
@@ -226,11 +232,15 @@ def create_database_and_table():
             CREATE TABLE IF NOT EXISTS monitor (
                 ID INT AUTO_INCREMENT PRIMARY KEY,
                 Nome VARCHAR(255) NOT NULL,
-                IP VARCHAR(15) NOT NULL UNIQUE,
+                IP VARCHAR(255) NOT NULL UNIQUE,
                 Maintenence BOOLEAN DEFAULT FALSE
             ) AUTO_INCREMENT=1;
             '''
             cursor.execute(create_table_query)
+            try:
+                cursor.execute("ALTER TABLE monitor MODIFY COLUMN IP VARCHAR(255) NOT NULL UNIQUE;")
+            except Exception:
+                pass
             import_addresses(cursor)
             renumber_ids(cursor)
             print("Database e tabella monitor pronti all'uso.")
@@ -1075,6 +1085,26 @@ async def invia_info_avanzate(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
     await invia_messaggio("Inserisci l'username per la connessione SSH:", chat_id)
 
+def is_valid_ip_or_host(target):
+    """
+    Verifica se il target inserito è un indirizzo IP valido (IPv4/IPv6)
+    oppure un hostname/FQDN conforme allo standard RFC 1123.
+    """
+    if not target or not isinstance(target, str):
+        return False
+    target = target.strip()
+    try:
+        ipaddress.ip_address(target)
+        return True
+    except ValueError:
+        pass
+
+    # Regex validazione hostname / dominio locale / FQDN
+    hostname_regex = re.compile(
+        r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
+    )
+    return bool(len(target) <= 253 and hostname_regex.match(target))
+
 @richiede_autorizzazione
 async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     azione = context.user_data.get('azione')
@@ -1082,16 +1112,14 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nome_dispositivo = update.message.text
         context.user_data['nome_dispositivo'] = nome_dispositivo
         context.user_data['azione'] = 'aggiungi_dispositivo_indirizzo'
-        await invia_messaggio("Inserisci l'indirizzo IP del dispositivo (es. 192.168.1.100):", update.effective_chat.id)
+        await invia_messaggio("Inserisci l'indirizzo IP o l'hostname del dispositivo (es. 192.168.1.100 o nas.local):", update.effective_chat.id)
     elif azione == 'aggiungi_dispositivo_indirizzo':
-        indirizzo_ip = update.message.text
+        indirizzo_ip = update.message.text.strip()
         nome_dispositivo = context.user_data.get('nome_dispositivo')
 
-        # Verifica se l'indirizzo IP è valido
-        try:
-            ipaddress.ip_address(indirizzo_ip)
-        except ValueError:
-            await invia_messaggio("⚠️ Indirizzo IP non valido. Riprova.", update.effective_chat.id)
+        # Verifica se l'indirizzo IP o hostname è valido
+        if not is_valid_ip_or_host(indirizzo_ip):
+            await invia_messaggio("⚠️ Indirizzo IP o Hostname non valido. Riprova:", update.effective_chat.id)
             return
 
         # Verifica se l'indirizzo IP è già presente nel database
@@ -1139,19 +1167,17 @@ async def gestisci_azione(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['nuovo_nome'] = nuovo_nome
         context.user_data['azione'] = 'modifica_indirizzo_nome'
 
-        await invia_messaggio("Inserisci il nuovo indirizzo IP del dispositivo:", update.effective_chat.id)
+        await invia_messaggio("Inserisci il nuovo indirizzo IP o hostname del dispositivo:", update.effective_chat.id)
 
     elif azione == 'modifica_indirizzo_nome':
-        nuovo_indirizzo_ip = update.message.text
+        nuovo_indirizzo_ip = update.message.text.strip()
         vecchio_nome = context.user_data.get('nome_dispositivo')
         vecchio_indirizzo_ip = context.user_data.get('indirizzo_ip')
         nuovo_nome = context.user_data.get('nuovo_nome')
 
-        # Verifica se l'indirizzo IP è valido
-        try:
-            ipaddress.ip_address(nuovo_indirizzo_ip)
-        except ValueError:
-            await invia_messaggio("⚠️ Indirizzo IP non valido. Riprova.", update.effective_chat.id)
+        # Verifica se l'indirizzo IP o hostname è valido
+        if not is_valid_ip_or_host(nuovo_indirizzo_ip):
+            await invia_messaggio("⚠️ Indirizzo IP o Hostname non valido. Riprova:", update.effective_chat.id)
             return
 
         # Verifica se l'indirizzo IP è lo stesso di quello già presente
@@ -1600,8 +1626,9 @@ async def monitoraggio():
     global allarme_attivo, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date, manutenzione_reason, last_monitor_heartbeat
     tutti_offline = False
     stato_precedente_connessioni = {}
+    consecutive_failures = {}
+    consecutive_successes = {}
     ultima_notifica = {}  # Dizionario per tenere traccia dell'ultimo momento in cui è stata inviata una notifica
-    tempo_notifica_dispositivo = 1800  # 30 minuti
 
     # Variabili per controllo aggiornamenti
     next_update_check = datetime.now()
@@ -1610,6 +1637,12 @@ async def monitoraggio():
     while True:
         try:
             last_monitor_heartbeat = time.time()
+            # Parametri di tolleranza e intervallo (configurabili da config.py con fallback)
+            check_interval = getattr(config, 'CHECK_INTERVAL', 30)
+            offline_threshold = getattr(config, 'OFFLINE_THRESHOLD', 5)
+            online_threshold = getattr(config, 'ONLINE_THRESHOLD', 3)
+            tempo_notifica_dispositivo = getattr(config, 'TEMPO_NOTIFICA_DISPOSITIVO', 1800)  # 30 minuti
+
             # Sincronizzazione stato manutenzione da file (per modifiche esterne/Ansible)
             ext_global_expiry, ext_indiv_expiries, ext_global_manual, ext_reason = load_maintenance_data()
 
@@ -1694,78 +1727,74 @@ async def monitoraggio():
                         scrivi_log("Arresto servizio per failover su errore DB")
                         sys.exit(1)
 
-                    await asyncio.sleep(60)
+                    await asyncio.sleep(check_interval)
                     continue
 
                 for nome_dispositivo, indirizzo_ip, in_manutenzione_singola in dispositivi:
                     last_monitor_heartbeat = time.time()
                     if in_manutenzione_singola:
-                        # Se il dispositivo è in manutenzione singola, lo saltiamo nel monitoraggio offline
-                        # ma non azzeriamo tutti_offline basandoci su di lui.
+                        # Se il dispositivo è in manutenzione singola, azzeriamo i contatori transitori
+                        consecutive_failures[indirizzo_ip] = 0
+                        consecutive_successes[indirizzo_ip] = 0
                         continue
 
                     dispositivi_monitorati += 1
-                    tentativi = 0
 
-                    while tentativi < 2:
-                        connessione_attuale = await controlla_connessione(indirizzo_ip, skip_maintenance_check=True)
-                        stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
+                    connessione_attuale = await controlla_connessione(indirizzo_ip, skip_maintenance_check=True)
+                    stato_precedente = stato_precedente_connessioni.get(indirizzo_ip, None)
 
-                        if connessione_attuale:
-                            if stato_precedente is False:  # Se prima era offline e ora è online
+                    if connessione_attuale:
+                        consecutive_successes[indirizzo_ip] = consecutive_successes.get(indirizzo_ip, 0) + 1
+                        consecutive_failures[indirizzo_ip] = 0
+
+                        if stato_precedente is False:
+                            # Era confermato offline: verifichiamo la soglia di stabilità per tornare online
+                            if consecutive_successes[indirizzo_ip] >= online_threshold:
+                                stato_precedente_connessioni[indirizzo_ip] = True
                                 await invia_messaggio(
                                     f"✅ La connessione è ripristinata : {nome_dispositivo} ({indirizzo_ip}). ",
                                     config.chat_id
                                 )
                                 scrivi_log("Connessione Ripristinata", nome_dispositivo, indirizzo_ip)
-                                # Rimuovi la notifica di offline se era stata inviata
                                 ultima_notifica.pop(indirizzo_ip, None)
-                            stato_precedente_connessioni[indirizzo_ip] = True
-                            tutti_offline = False
-                            break
                         else:
-                            tentativi += 1
-                            await asyncio.sleep(30)
+                            # Era già online (o prima verifica all'avvio con esito positivo)
+                            stato_precedente_connessioni[indirizzo_ip] = True
 
-                    if not connessione_attuale:
-                        # Controlla se il dispositivo era online prima
-                        if stato_precedente is not None and stato_precedente:  # Solo se era online prima
-                            # Controlla se la notifica è già stata inviata
-                            if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
-                                print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
+                    else:
+                        consecutive_failures[indirizzo_ip] = consecutive_failures.get(indirizzo_ip, 0) + 1
+                        consecutive_successes[indirizzo_ip] = 0
+
+                        if stato_precedente is not False:
+                            # Era online (oppure primo avvio None): verifichiamo la soglia offline_threshold
+                            if consecutive_failures[indirizzo_ip] >= offline_threshold:
+                                stato_precedente_connessioni[indirizzo_ip] = False
+                                if stato_precedente is True or stato_precedente is None:
+                                    print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip}) ({consecutive_failures[indirizzo_ip]}/{offline_threshold})")
+                                    await invia_messaggio(
+                                        f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
+                                        config.chat_id
+                                    )
+                                    scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
+                                    ultima_notifica[indirizzo_ip] = datetime.now()
+                        else:
+                            # Il dispositivo era già offline: gestione promemoria periodico (30 min)
+                            ultimo_avviso = ultima_notifica.get(indirizzo_ip)
+                            if ultimo_avviso is None or (datetime.now() - ultimo_avviso).total_seconds() > tempo_notifica_dispositivo:
+                                print(f"Invio promemoria: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
                                 await invia_messaggio(
                                     f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
                                     config.chat_id
                                 )
-                                # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
                                 ultima_notifica[indirizzo_ip] = datetime.now()
-                                # Scrivi il log solo se è la prima volta
-                                if stato_precedente_connessioni.get(indirizzo_ip, True):
-                                    scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                    stato_precedente_connessioni[indirizzo_ip] = False
-                            else:
-                                # Se la notifica è già stata inviata e non è passato il tempo di notifica, non inviare nulla
-                                pass
-                        stato_precedente_connessioni[indirizzo_ip] = False
 
-                    # Questa logica era stata rimossa erroneamente. La ripristino ora.
-                    if not connessione_attuale and stato_precedente is False:
-                        # Se il dispositivo è offline e non è stato inviato un messaggio negli ultimi 30 minuti
-                        if indirizzo_ip not in ultima_notifica or (datetime.now() - ultima_notifica[indirizzo_ip]).total_seconds() > tempo_notifica_dispositivo:
-                            print(f"Invio notifica: Connessione Persa per {nome_dispositivo} ({indirizzo_ip})")
-                            await invia_messaggio(
-                                f"⚠️ Avviso: la connessione è persa : {nome_dispositivo} ({indirizzo_ip}). ",
-                                config.chat_id
-                            )
-                            # Aggiungi l'indirizzo IP al dizionario delle notifiche inviate
-                            ultima_notifica[indirizzo_ip] = datetime.now()
-                            # Scrivi il log solo se è la prima volta
-                            if stato_precedente_connessioni.get(indirizzo_ip, True):
-                                scrivi_log("Connessione interrotta", nome_dispositivo, indirizzo_ip)
-                                stato_precedente_connessioni[indirizzo_ip] = False
-
-                # Se non ci sono dispositivi monitorati (tutti in manutenzione), non attiviamo l'allarme "Tutti Offline"
-                if dispositivi_monitorati == 0:
+                # Gestione Allarme Generale "Tutti Offline" basato sugli stati confermati
+                if dispositivi_monitorati > 0:
+                    tutti_offline = all(
+                        stato_precedente_connessioni.get(ip) is False
+                        for _, ip, in_m in dispositivi if not in_m
+                    )
+                else:
                     tutti_offline = False
 
                 if tutti_offline and not allarme_attivo:
@@ -1777,7 +1806,7 @@ async def monitoraggio():
                     print("Allarme disattivo")
                     await invia_messaggio("✅ Allarme Rientrato: Rilevata connessione attiva.", config.chat_id)
 
-                await asyncio.sleep(60)  # Attendi 60 secondi prima di rieseguire il controllo
+                await asyncio.sleep(check_interval)  # Pausa configurabile tra i cicli di scansione
 
                 # Gestione cambio giorno e invio report
                 await invia_file_testuale()
@@ -1863,6 +1892,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT, gestisci_azione))
 
     # Carica dati manutenzione all'avvio
+    global manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, modalita_manutenzione, report_pending_date, manutenzione_reason
     manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, global_manual, manutenzione_reason = load_maintenance_data()
 
     # Check globale
