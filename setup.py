@@ -194,9 +194,13 @@ HEALTH_SERVER_PORT = 8081
 # Threading
 MAX_WORKERS = 10
 
-# Network Ping Settings
+# Network Ping & Hysteresis Settings (v10.7.0)
 PING_COUNT = 3
 PING_TIMEOUT = 1
+CHECK_INTERVAL = 30
+OFFLINE_THRESHOLD = 5
+ONLINE_THRESHOLD = 3
+TEMPO_NOTIFICA_DISPOSITIVO = 1800
 
 # Node Identification
 PRIMARY_HOSTNAME = "{primary_hostname}"

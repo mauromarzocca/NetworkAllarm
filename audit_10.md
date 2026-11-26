@@ -362,6 +362,7 @@ flowchart LR
 - [x] **Release `v10.6.1` (Tolleranza Rete & Ping Multi-Pacchetto):** Incremento a 3 pacchetti ICMP (`-c 3`) con timeout esplicito (`-W 1`) e fallback automatico configurabile (`PING_COUNT`, `PING_TIMEOUT`) per azzerare i falsi allarmi su nodi con EEE e telecamere Wi-Fi IoT.
 - [x] **Release `v10.6.2` (Automazione Requisiti Update Manager):** Verifica automatica e non interattiva delle dipendenze da `requirements.txt`: se già soddisfatte, l'aggiornamento procede direttamente senza richiedere conferme all'utente.
 - [x] **Release `v10.6.3` (Resilienza all'Avvio, Systemd Network-Online & Fallback Sicuri):** Connessione MySQL iniziale con retry automatico al boot, inizializzazione pulita in `main()`, fallback universale con `getattr()` per configurazioni opzionali e unit systemd legate a `network-online.target`.
+- [x] **Release `v10.7.0` (Monitoraggio Isteresi Anti-Flapping & Loop Non Bloccante):** Motore di monitoraggio non bloccante con contatori di stato progressivi (stile Zabbix/Nagios), soglia di disconnessione a 5 fallimenti consecutivi (`OFFLINE_THRESHOLD`) e ripristino stabile a 3 successi consecutivi (`ONLINE_THRESHOLD`), con parametrizzazione trasparente in `config.py`.
 
 ---
 

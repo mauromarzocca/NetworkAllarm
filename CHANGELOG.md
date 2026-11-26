@@ -167,3 +167,10 @@
   - Configurazione avanzata dei servizi systemd in [setup](./setup.py) con `Wants=network-online.target` e `After=network-online.target`, garantendo che l'avvio avvenga solo dopo l'assegnazione dell'indirizzo IP.
   - Aggiornamento continuo dell'heartbeat del monitoraggio durante la scansione dei singoli dispositivi per evitare falsi positivi 503 dell'health check.
   - Aggiunta schermata di riepilogo con pausa interattiva al termine dell'aggiornamento Git in [Update_Manager](./update_manager.py).
+- Versione 10.7.0 : Monitoraggio Isteresi Anti-Flapping & Loop Non Bloccante:
+  - Riprogettato completamente il motore di monitoraggio in [main](./main.py) con architettura ad accumulatore di stato a cicli progressivi (stile Nagios/Zabbix), eliminando i blocchi sequenziali (`await asyncio.sleep(30)`) durante i retry.
+  - Introdotta la soglia di isteresi configurabile `OFFLINE_THRESHOLD = 5`: un dispositivo viene dichiarato perso solo dopo 5 controlli consecutivi falliti, eliminando i falsi allarmi dovuti a jitter radio Wi-Fi o risparmio energetico.
+  - Introdotta la soglia di stabilità `ONLINE_THRESHOLD = 3`: un dispositivo disconnesso viene notificato come ripristinato solo dopo 3 controlli positivi consecutivi, azzerando le notifiche rimbalzanti (effetto *flapping*).
+  - Parametrizzazione da `config.py` con fallback sicuri per `CHECK_INTERVAL` (default 30s), `OFFLINE_THRESHOLD` (default 5), `ONLINE_THRESHOLD` (default 3) e `TEMPO_NOTIFICA_DISPOSITIVO` (default 1800s).
+  - Allineamento dei modelli in [config.example](./config.example.py) e [setup](./setup.py).
+  - Rafforzamento dell'allarme critico "Tutti i dispositivi sono OFFLINE" subordinato alla conferma consolidata di tutti gli host monitorati.
