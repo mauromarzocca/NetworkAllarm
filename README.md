@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.6.2
+Versione : 10.6.3
 
 ![logo](/img/logo.png)
 
@@ -307,6 +307,9 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - Versione 10.6.2 : Automazione Verifica Requisiti in Update Manager:
     - Controllo automatico e silenzioso dei requisiti in `requirements.txt`: nessuna interruzione o prompt per l'utente se i pacchetti sono già installati.
     - Installazione automatica solo in presenza di dipendenze mancanti o versioni non allineate.
+  - Versione 10.6.3 : Resilienza all'Avvio, Systemd Network-Online & Fallback Sicuri:
+    - Connessione MySQL iniziale con retry automatico al boot e inizializzazione protetta dentro `main()`.
+    - Fallback sicuri su tutte le variabili di configurazione e dipendenza `network-online.target` nei servizi systemd.
 
 ---
 

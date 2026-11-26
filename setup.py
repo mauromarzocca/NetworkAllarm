@@ -319,7 +319,8 @@ def create_services(conf):
 
     na_service = f"""[Unit]
 Description=NetworkAllarm Service
-After=network.target mysql.service
+Wants=network-online.target
+After=network-online.target mysql.service
 Alias=NetworkAllarm.service
 
 [Service]
@@ -337,7 +338,8 @@ WantedBy=multi-user.target
     # Failover Monitor Service
     fm_service = f"""[Unit]
 Description=NetworkAllarm Failover Monitor
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple

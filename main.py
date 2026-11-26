@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.6.2"
+version = "10.6.3"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -35,36 +35,43 @@ _health_startup_time = time.time()
 # Funzione per determinare il nodo corrente
 def get_nodo_corrente():
     hostname = socket.gethostname()
-    return config.NODE_ALIASES.get(hostname, hostname)
+    node_aliases = getattr(config, 'NODE_ALIASES', {})
+    return node_aliases.get(hostname, hostname)
 
-DB_HOST = config.DB_HOST
-DB_NAME = config.DB_NAME
-DB_USER = config.DB_USER
-DB_PASSWORD = config.DB_PASSWORD
+DB_HOST = getattr(config, 'DB_HOST', 'localhost')
+DB_NAME = getattr(config, 'DB_NAME', 'NetworkAllarm')
+DB_USER = getattr(config, 'DB_USER', 'root')
+DB_PASSWORD = getattr(config, 'DB_PASSWORD', '')
 
 # Executor per task bloccanti
-executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS)
+executor = ThreadPoolExecutor(max_workers=getattr(config, 'MAX_WORKERS', 10))
 
-def create_database_if_not_exists():
-    # Connessione iniziale al server MySQL e creazione del database NetworkAllarm se non esiste.
-    try:
-        cnx = mysql.connector.connect(
-            user=config.DB_USER,
-            password=config.DB_PASSWORD,
-            host=DB_HOST
-        )
+def create_database_if_not_exists(max_retries=5, retry_delay=3):
+    # Connessione iniziale al server MySQL con retry per tolleranza all'avvio concorrente/boot
+    for attempt in range(1, max_retries + 1):
         try:
-            cursor = cnx.cursor()
+            cnx = mysql.connector.connect(
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST
+            )
             try:
-                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.DB_NAME}")
-                print(f"Database {config.DB_NAME} creato o esistente.")
+                cursor = cnx.cursor()
+                try:
+                    cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{DB_NAME}`")
+                    print(f"Database {DB_NAME} creato o esistente.")
+                    return
+                finally:
+                    cursor.close()
             finally:
-                cursor.close()
-        finally:
-            cnx.close()
-    except mysql.connector.Error as err:
-        print(f"Errore di connessione al server MySQL: {err}")
-        exit(1)
+                cnx.close()
+        except mysql.connector.Error as err:
+            print(f"Tentativo {attempt}/{max_retries} - Connessione MySQL a {DB_HOST}: {err}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                print(f"Errore critico: impossibile connettersi al server MySQL dopo {max_retries} tentativi.")
+                sys.exit(1)
 
 # Connection Pool MySQL
 _db_pool = None
@@ -74,12 +81,12 @@ def get_db_pool():
     if _db_pool is None:
         _db_pool = pooling.MySQLConnectionPool(
             pool_name="networkallarm_pool",
-            pool_size=config.MAX_WORKERS,
+            pool_size=getattr(config, 'MAX_WORKERS', 10),
             pool_reset_session=True,
-            user=config.DB_USER,
-            password=config.DB_PASSWORD,
+            user=DB_USER,
+            password=DB_PASSWORD,
             host=DB_HOST,
-            database=config.DB_NAME
+            database=DB_NAME
         )
     return _db_pool
 
@@ -168,14 +175,12 @@ class HealthHandler(BaseHTTPRequestHandler):
         pass
 
 def start_health_server():
+    port = getattr(config, 'HEALTH_SERVER_PORT', 8081)
     try:
-        server = HTTPServer(('0.0.0.0', config.HEALTH_SERVER_PORT), HealthHandler)
+        server = HTTPServer(('0.0.0.0', port), HealthHandler)
         server.serve_forever()
     except Exception as e:
-        print(f"Errore avvio server health check su porta {config.HEALTH_SERVER_PORT}: {e}")
-
-# Avvia server health check su thread daemon
-threading.Thread(target=start_health_server, daemon=True).start()
+        print(f"Errore avvio server health check su porta {port}: {e}")
 
 def get_device_name_by_ip(ip):
     try:
@@ -189,7 +194,8 @@ def get_device_name_by_ip(ip):
 def import_addresses(cursor):
     # Importa gli indirizzi dalla lista indirizzi_ping nella tabella monitor.
     # Se un record esiste già, aggiorna il nome e l'indirizzo IP.
-    for indirizzo in config.indirizzi_ping:
+    indirizzi_ping = getattr(config, 'indirizzi_ping', [])
+    for indirizzo in indirizzi_ping:
         try:
             query = """
             INSERT INTO monitor (Nome, IP) 
@@ -232,8 +238,6 @@ def create_database_and_table():
     except mysql.connector.Error as err:
         print(f"Errore durante l'operazione sul database: {err}")
 
-# Esegui la funzione principale per creare il database e la tabella
-create_database_and_table()
 # Variabile globale per lo stato dell'allarme
 allarme_attivo = False
 
@@ -1685,7 +1689,7 @@ async def monitoraggio():
                     await invia_messaggio(f"⚠️ {messaggio_errore}", config.chat_id)
 
                     # Se sistema a più nodi, stop del servizio per failover
-                    if len(config.NODE_ALIASES) > 1:
+                    if len(getattr(config, 'NODE_ALIASES', {})) > 1:
                         print("Rilevato sistema a più nodi. Arresto del servizio per failover...")
                         scrivi_log("Arresto servizio per failover su errore DB")
                         sys.exit(1)
@@ -1694,6 +1698,7 @@ async def monitoraggio():
                     continue
 
                 for nome_dispositivo, indirizzo_ip, in_manutenzione_singola in dispositivi:
+                    last_monitor_heartbeat = time.time()
                     if in_manutenzione_singola:
                         # Se il dispositivo è in manutenzione singola, lo saltiamo nel monitoraggio offline
                         # ma non azzeriamo tutti_offline basandoci su di lui.
@@ -1838,6 +1843,12 @@ def main():
             print(f"Errore rimozione flag update: {e}")
     else:
         scrivi_log("Avvio dello script")
+
+    # Inizializzazione database MySQL e tabella
+    create_database_and_table()
+
+    # Avvio server health check su thread daemon
+    threading.Thread(target=start_health_server, daemon=True).start()
 
     async def post_init(app):
         # Avvia il loop di monitoraggio nativamente nel contesto dell'event loop di Application

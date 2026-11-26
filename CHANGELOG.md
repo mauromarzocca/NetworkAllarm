@@ -160,3 +160,10 @@
   - Implementata la verifica automatica e non interattiva delle dipendenze da `requirements.txt` in [Update_Manager](./update_manager.py) tramite `importlib.metadata`.
   - Se tutti i requisiti sono già soddisfatti, l'aggiornamento procede direttamente senza richiedere conferme all'utente e senza invocare inutilmente `pip install`.
   - In caso di dipendenze mancanti o non conformi, l'installazione viene eseguita in automatico segnalando i singoli pacchetti aggiornati.
+- Versione 10.6.3 : Resilienza all'Avvio, Systemd Network-Online & Fallback Sicuri:
+  - Introdotto ciclo di retry automatico (5 tentativi distanziati di 3 secondi) sulla connessione iniziale MySQL in [main](./main.py), prevenendo crash istantanei al boot del sistema.
+  - Spostata l'inizializzazione del database e l'avvio del server HTTP di health check dentro la funzione `main()`, azzerando gli effetti collaterali all'importazione del modulo.
+  - Adozione sistematica di fallback con `getattr(config, ...)` per tutte le variabili opzionali (`DB_HOST`, `MAX_WORKERS`, `HEALTH_SERVER_PORT`, `NODE_ALIASES`), garantendo piena retrocompatibilità con qualsiasi versione di `config.py`.
+  - Configurazione avanzata dei servizi systemd in [setup](./setup.py) con `Wants=network-online.target` e `After=network-online.target`, garantendo che l'avvio avvenga solo dopo l'assegnazione dell'indirizzo IP.
+  - Aggiornamento continuo dell'heartbeat del monitoraggio durante la scansione dei singoli dispositivi per evitare falsi positivi 503 dell'health check.
+  - Aggiunta schermata di riepilogo con pausa interattiva al termine dell'aggiornamento Git in [Update_Manager](./update_manager.py).
