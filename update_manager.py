@@ -531,6 +531,9 @@ def update_via_git():
             if input("   Vuoi riavviare il servizio per applicare le modifiche? (s/n): ").strip().lower() in ['s', 'y', 'si']:
                 restart_service()
 
+        print("\n✅ Aggiornamento completato con successo.")
+        input("Premi Invio per continuare...")
+
     except Exception as e:
         print(f"\n[Errore] Aggiornamento Git non riuscito: {e}")
         input("Premi Invio per continuare...")
