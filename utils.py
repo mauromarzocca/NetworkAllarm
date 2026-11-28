@@ -181,13 +181,13 @@ def get_bot():
 AUTO_DELETE_MESSAGES = getattr(config, 'AUTO_DELETE_MESSAGES', False)
 DEFAULT_MESSAGE_RETENTION = min(getattr(config, 'MESSAGE_RETENTION_SECONDS', 48 * 3600 - 60), 48 * 3600 - 60)
 
-async def invia_messaggio(messaggio, chat_id, reply_markup=None):
+async def invia_messaggio(messaggio, chat_id, reply_markup=None, parse_mode=None):
     bot = get_bot()
     if bot is None:
         print("Telegram Bot non disponibile o libreria non installata.")
         return
     try:
-        messaggio_inviato = await bot.send_message(chat_id=chat_id, text=messaggio, reply_markup=reply_markup)
+        messaggio_inviato = await bot.send_message(chat_id=chat_id, text=messaggio, reply_markup=reply_markup, parse_mode=parse_mode)
         message_id = messaggio_inviato.message_id
         if AUTO_DELETE_MESSAGES and DEFAULT_MESSAGE_RETENTION > 0:
             asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, message_id, DEFAULT_MESSAGE_RETENTION))
@@ -195,7 +195,7 @@ async def invia_messaggio(messaggio, chat_id, reply_markup=None):
     except Exception as e:
         print(f"Errore durante l'invio del messaggio: {e}")
 
-async def invia_messaggi_divisi(messaggio, chat_id):
+async def invia_messaggi_divisi(messaggio, chat_id, parse_mode=None):
     bot = get_bot()
     if bot is None:
         print("Telegram Bot non disponibile o libreria non installata.")
@@ -204,7 +204,7 @@ async def invia_messaggi_divisi(messaggio, chat_id):
         righe = messaggio.split('\n')
         for i in range(0, len(righe), 10):
             parte = '\n'.join(righe[i:i+10])
-            messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte)
+            messaggio_inviato = await bot.send_message(chat_id=chat_id, text=parte, parse_mode=parse_mode)
             if AUTO_DELETE_MESSAGES and DEFAULT_MESSAGE_RETENTION > 0:
                 asyncio.create_task(cancella_messaggio_dopo_delay(chat_id, messaggio_inviato.message_id, DEFAULT_MESSAGE_RETENTION))
     except Exception as e:

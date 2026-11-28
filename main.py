@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "11.0.0-beta2"
+version = "11.0.0-beta3"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -1007,9 +1007,9 @@ async def menu_manutenzione_temporanea(update: Update, context: ContextTypes.DEF
 async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("➕ Aggiungi", callback_data='aggiungi_dispositivo_callback'),
-         InlineKeyboardButton("✏️ Modifica", callback_data='modifica_dispositivo'),
-         InlineKeyboardButton("🗑️ Cancella", callback_data='rimuovi_dispositivo')],
-        [InlineKeyboardButton("👻 Modalità Invisibile", callback_data='menu_invisibile')]
+         InlineKeyboardButton("✏️ Modifica", callback_data='modifica_dispositivo')],
+        [InlineKeyboardButton("🗑️ Cancella", callback_data='rimuovi_dispositivo'),
+         InlineKeyboardButton("👻 Modalità Invisibile", callback_data='menu_invisibile')]
     ]
     chat_id = update.effective_chat.id
     messaggio = "Gestione Dispositivo:"
@@ -1040,8 +1040,8 @@ async def mostra_menu_invisibile(update: Update, context: ContextTypes.DEFAULT_T
         icona = "👻" if is_inv else "👁️"
         pulsanti.append(InlineKeyboardButton(f"{icona} {nome}", callback_data=f"toggle_inv:{ip}"))
 
-    # Griglia a 3 colonne per compattezza e chiarezza
-    righe = [pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)]
+    # Griglia a 2 colonne per evitare troncamenti su schermi smartphone
+    righe = [pulsanti[i:i+2] for i in range(0, len(pulsanti), 2)]
     righe.append([InlineKeyboardButton("⬅️ Gestione Dispositivo", callback_data='gestione_dispositivo')])
     keyboard = InlineKeyboardMarkup(righe)
 
@@ -1058,11 +1058,10 @@ async def mostra_menu_invisibile(update: Update, context: ContextTypes.DEFAULT_T
             return
         except Exception:
             pass
-    await invia_messaggio(messaggio, chat_id, reply_markup=keyboard)
+    await invia_messaggio(messaggio, chat_id, reply_markup=keyboard, parse_mode="HTML")
 
 @richiede_autorizzazione
 async def toggle_modalita_invisibile(update: Update, context: ContextTypes.DEFAULT_TYPE, indirizzo_ip: str):
-    chat_id = update.effective_chat.id
     nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
     
     with get_db_cursor(commit=True) as cursor:
@@ -1073,15 +1072,16 @@ async def toggle_modalita_invisibile(update: Update, context: ContextTypes.DEFAU
         cursor.execute("UPDATE monitor SET Invisibile = %s WHERE IP = %s", (nuovo_stato, indirizzo_ip))
 
     if nuovo_stato:
-        msg = f"👻 <b>{nome_dispositivo}</b> ({indirizzo_ip}) è ora in <b>Modalità Invisibile</b>.\nEscluso dal monitoraggio ping e dall'allarme globale 'Tutti Offline', ma resta accessibile in System Advance."
         scrivi_log(f"Modalità Invisibile ATTIVATA: {nome_dispositivo} - {indirizzo_ip}")
     else:
-        msg = f"👁️ <b>{nome_dispositivo}</b> ({indirizzo_ip}) è tornato in <b>Modalità Normale</b>.\nMonitoraggio ping ripristinato."
         scrivi_log(f"Modalità Invisibile DISATTIVATA: {nome_dispositivo} - {indirizzo_ip}")
 
+    # Notifica toast nativa Telegram (zero messaggi di disturbo in chat)
     if update.callback_query:
-        await update.callback_query.answer(f"{'👻 Invisibile' if nuovo_stato else '👁️ Monitorato'}: {nome_dispositivo}")
-    await invia_messaggio(msg, chat_id)
+        testo_toast = f"👻 {nome_dispositivo} impostato su Invisibile" if nuovo_stato else f"👁️ {nome_dispositivo} ripristinato su Monitorato"
+        await update.callback_query.answer(testo_toast, show_alert=False)
+    
+    # Aggiorna la griglia sul messaggio esistente
     await mostra_menu_invisibile(update, context)
 
 @richiede_autorizzazione

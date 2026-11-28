@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 11.0.0-beta2
+Versione : 11.0.0-beta3
 
 ![logo](/img/logo.png)
 
@@ -330,6 +330,10 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
 - Versione 11.0.0-beta2 : UI Griglia Modalità Invisibile & Navigazione Fluida:
   - **Griglia a 3 Colonne:** Menu di selezione dispositivi invisibili organizzato su 3 colonne compatte con badge icona (`👻` / `👁️`).
   - **Navigazione In-Place:** Aggiornamento contestuale dei messaggi Telegram senza invii duplicati in chat e pulsante di ritorno a gestione dispositivo.
+- Versione 11.0.0-beta3 : Ottimizzazione Mobile Ergonomica, Griglia a 2 Colonne & Zero-Clutter:
+  - **Griglia a 2 Colonne Anti-Troncamento:** La griglia dei dispositivi in Modalità Invisibile adotta 2 colonne, eliminando i tagli di testo (`...`) su smartphone e garantendo perfetta distinguibilità per ogni dispositivo.
+  - **Feedback Nativo Toast Telegram:** Eliminati i messaggi di testo separati sotto la tastiera; lo stato si alterna istantaneamente con notifica toast a comparsa e aggiornamento dell'icona in-place.
+  - **Layout Bilanciato 2x2 per Gestione Dispositivo:** Matrice simmetrica a 4 pulsanti ampi ed ergonomici per Gestione Dispositivo.
 
 ---
 
