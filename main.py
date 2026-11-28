@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "11.0.0-beta1"
+version = "11.0.0-beta2"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -804,6 +804,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
+    elif query.data == 'gestione_dispositivo':
+        await menu_gestione_dispositivo(update, context)
     elif query.data == 'menu_invisibile':
         await mostra_menu_invisibile(update, context)
     elif query.data.startswith('toggle_inv:') or query.data.startswith('toggle_inv_'):
@@ -1009,7 +1011,15 @@ async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAUL
          InlineKeyboardButton("🗑️ Cancella", callback_data='rimuovi_dispositivo')],
         [InlineKeyboardButton("👻 Modalità Invisibile", callback_data='menu_invisibile')]
     ]
-    await invia_messaggio("Gestione Dispositivo:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+    chat_id = update.effective_chat.id
+    messaggio = "Gestione Dispositivo:"
+    if update.callback_query and update.callback_query.message:
+        try:
+            await update.callback_query.edit_message_text(messaggio, reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        except Exception:
+            pass
+    await invia_messaggio(messaggio, chat_id, reply_markup=InlineKeyboardMarkup(keyboard))
 
 @richiede_autorizzazione
 async def mostra_menu_invisibile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1028,17 +1038,18 @@ async def mostra_menu_invisibile(update: Update, context: ContextTypes.DEFAULT_T
         ip = item[1]
         is_inv = item[2] if len(item) > 2 else False
         icona = "👻" if is_inv else "👁️"
-        stato_txt = "Invisibile" if is_inv else "Monitorato"
-        pulsanti.append(InlineKeyboardButton(f"{icona} {nome} ({stato_txt})", callback_data=f"toggle_inv:{ip}"))
+        pulsanti.append(InlineKeyboardButton(f"{icona} {nome}", callback_data=f"toggle_inv:{ip}"))
 
-    keyboard = InlineKeyboardMarkup([[btn] for btn in pulsanti])
+    # Griglia a 3 colonne per compattezza e chiarezza
+    righe = [pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)]
+    righe.append([InlineKeyboardButton("⬅️ Gestione Dispositivo", callback_data='gestione_dispositivo')])
+    keyboard = InlineKeyboardMarkup(righe)
+
     messaggio = (
         "👻 <b>Modalità Invisibile per Dispositivo</b>\n\n"
-        "I dispositivi invisibili:\n"
-        "• Non vengono pingati dal ciclo di monitoraggio\n"
-        "• Non generano notifiche di disconnessione periodiche\n"
-        "• Non bloccano l'allarme generale <i>'Tutti Offline'</i> durante i blackout\n"
-        "• <b>Restano sempre interrogabili da 🖥️ System Advance</b>\n\n"
+        "<b>Legenda icone:</b>\n"
+        "• 👻 = Dispositivo Invisibile (escluso da ping e blackout check, disponibile in System Advance)\n"
+        "• 👁️ = Dispositivo Monitorato (controllo ping attivo)\n\n"
         "Tocca un dispositivo per attivare o disattivare la modalità invisibile:"
     )
     if update.callback_query and update.callback_query.message:
@@ -1069,7 +1080,7 @@ async def toggle_modalita_invisibile(update: Update, context: ContextTypes.DEFAU
         scrivi_log(f"Modalità Invisibile DISATTIVATA: {nome_dispositivo} - {indirizzo_ip}")
 
     if update.callback_query:
-        await update.callback_query.answer(f"{'Invisibile' if nuovo_stato else 'Normale'}: {nome_dispositivo}")
+        await update.callback_query.answer(f"{'👻 Invisibile' if nuovo_stato else '👁️ Monitorato'}: {nome_dispositivo}")
     await invia_messaggio(msg, chat_id)
     await mostra_menu_invisibile(update, context)
 

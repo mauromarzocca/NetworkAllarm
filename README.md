@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 11.0.0-beta1
+Versione : 11.0.0-beta2
 
 ![logo](/img/logo.png)
 
@@ -327,6 +327,9 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
   - **Modalità Invisibile per Dispositivo:** I dispositivi contrassegnati come invisibili non vengono monitorati via ping, non generano allerte e non impediscono il trigger dell'allarme critico generale *"Tutti i dispositivi sono OFFLINE"* durante i blackout (ideale per nodi secondari o apparati sotto UPS), ma restano pienamente accessibili in `🖥️ System Advance`.
   - **Timer di Manutenzione Avanzato:** Conteggio preciso di minuti e secondi residui con orario stimato di completamento (`fine ore HH:MM:SS`) integrato in tutti i menu e comandi di stato.
   - **Schema DB & Setup:** Aggiunta del campo `Invisibile` nella tabella `monitor` e migrazione automatica in `setup.py`.
+- Versione 11.0.0-beta2 : UI Griglia Modalità Invisibile & Navigazione Fluida:
+  - **Griglia a 3 Colonne:** Menu di selezione dispositivi invisibili organizzato su 3 colonne compatte con badge icona (`👻` / `👁️`).
+  - **Navigazione In-Place:** Aggiornamento contestuale dei messaggi Telegram senza invii duplicati in chat e pulsante di ritorno a gestione dispositivo.
 
 ---
 
