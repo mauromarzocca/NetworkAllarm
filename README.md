@@ -1,6 +1,6 @@
 # NetworkAllarm
 
-Versione : 10.7.1
+Versione : 11.0.0-beta1
 
 ![logo](/img/logo.png)
 
@@ -23,6 +23,7 @@ Versione : 10.7.1
   - [Note sulle versioni](#note-sulle-versioni)
     - [Versione 9](#versione-9)
     - [Versione 10](#versione-10)
+    - [Versione 11](#versione-11)
   - [Licenza](#licenza)
   - [Autori](#autori)
 
@@ -318,6 +319,14 @@ Per le versioni precedenti, consultare il [Changelog](./CHANGELOG.md).
     - Correzione scope variabili globali in `main()`, flush sincrono dei log su switch di nodo e verifica codici di uscita in failover.
     - Singleton Bot per prevenire socket leak, auto-cancellazione messaggi resa opzionale, risoluzione collisioni `renumber_ids()` e pulizia dump SQL.
     - Supporto per Hostname FQDN (RFC 1123), allineamento heartbeat health check e gestione `failover-monitor.service` in Update Manager.
+
+### Versione 11
+
+- Versione 11.0.0-beta1 : Fase 11 - Sicurezza Pulsanti, Modalità Invisibile e Perfezionamento Timer:
+  - **Pulsanti Inline a Scadenza (5 minuti):** I pulsanti dei comandi inline hanno una validità massima di 300 secondi (5 minuti). Se cliccati dopo la scadenza, mostrano un avviso nativo e vengono rimossi automaticamente dal messaggio.
+  - **Modalità Invisibile per Dispositivo:** I dispositivi contrassegnati come invisibili non vengono monitorati via ping, non generano allerte e non impediscono il trigger dell'allarme critico generale *"Tutti i dispositivi sono OFFLINE"* durante i blackout (ideale per nodi secondari o apparati sotto UPS), ma restano pienamente accessibili in `🖥️ System Advance`.
+  - **Timer di Manutenzione Avanzato:** Conteggio preciso di minuti e secondi residui con orario stimato di completamento (`fine ore HH:MM:SS`) integrato in tutti i menu e comandi di stato.
+  - **Schema DB & Setup:** Aggiunta del campo `Invisibile` nella tabella `monitor` e migrazione automatica in `setup.py`.
 
 ---
 

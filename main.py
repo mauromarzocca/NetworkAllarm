@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-version = "10.7.1"
+version = "11.0.0-beta1"
 
 # Timestamp per health check dinamico del loop di monitoraggio
 last_monitor_heartbeat = time.time()
@@ -233,12 +233,17 @@ def create_database_and_table():
                 ID INT AUTO_INCREMENT PRIMARY KEY,
                 Nome VARCHAR(255) NOT NULL,
                 IP VARCHAR(255) NOT NULL UNIQUE,
-                Maintenence BOOLEAN DEFAULT FALSE
+                Maintenence BOOLEAN DEFAULT FALSE,
+                Invisibile BOOLEAN DEFAULT FALSE
             ) AUTO_INCREMENT=1;
             '''
             cursor.execute(create_table_query)
             try:
                 cursor.execute("ALTER TABLE monitor MODIFY COLUMN IP VARCHAR(255) NOT NULL UNIQUE;")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE monitor ADD COLUMN Invisibile BOOLEAN DEFAULT FALSE;")
             except Exception:
                 pass
             import_addresses(cursor)
@@ -343,6 +348,29 @@ def load_maintenance_data():
 
 # Variabili globali aggiunte
 modalita_manutenzione = False
+
+def format_tempo_residuo(scadenza_dt):
+    """
+    Formatta in modo leggibile e preciso il tempo residuo fino alla scadenza della manutenzione.
+    Ritorna stringhe come: 'rimangono 24m 15s (fine ore 18:45:00)' oppure 'rimangono 35s'.
+    """
+    if not scadenza_dt:
+        return ""
+    now = datetime.now()
+    if now >= scadenza_dt:
+        return "in fase di ripristino"
+    diff = scadenza_dt - now
+    secondi_totali = int(diff.total_seconds())
+    minuti = secondi_totali // 60
+    secondi = secondi_totali % 60
+    orario_scadenza = scadenza_dt.strftime("%H:%M:%S")
+
+    if minuti > 0:
+        tempo_str = f"{minuti}m {secondi:02d}s"
+    else:
+        tempo_str = f"{secondi}s"
+
+    return f"rimangono {tempo_str} (fine ore {orario_scadenza})"
 
 def aggiorna_dispositivo_manutenzione(nome, indirizzo, in_manutenzione):
     with get_db_cursor(commit=True) as cursor:
@@ -677,7 +705,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             version_msg += " (Aggiornato)"
 
-    messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n{version_msg}\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
+    stato_manut_msg = ""
+    if modalita_manutenzione:
+        if manutenzione_programmata_scadenza:
+            stato_manut_msg = f"\n\n🔧 <b>Manutenzione Globale Attiva:</b>\n⏳ {format_tempo_residuo(manutenzione_programmata_scadenza)}"
+        else:
+            stato_manut_msg = "\n\n🔧 <b>Manutenzione Globale Attiva (Manuale)</b>"
+
+    messaggio = f"✅ Nodo attivo: <b>{nodo}</b>\n{version_msg}{stato_manut_msg}\n\nCiao! Usa i pulsanti qui sotto per gestire il sistema."
     await update.message.reply_text(
         messaggio,
         reply_markup=get_custom_keyboard(),
@@ -740,6 +775,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
     
     query = update.callback_query
+
+    # Controllo scadenza pulsanti inline (validità max 5 minuti = 300 secondi)
+    if query and query.message and query.message.date:
+        msg_date = query.message.date
+        now_dt = datetime.now(msg_date.tzinfo) if msg_date.tzinfo else datetime.utcnow()
+        if (now_dt - msg_date).total_seconds() > 300:
+            await query.answer("⚠️ Questo pulsante è scaduto (validità max 5 minuti).", show_alert=True)
+            try:
+                await query.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            return
+
     await query.answer()
     
     if query.data == 'inizio_manutenzione' and not modalita_manutenzione:
@@ -756,6 +804,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await modifica_dispositivo(update, context)
     elif query.data == 'rimuovi_dispositivo':
         await rimuovi_dispositivo(update, context)
+    elif query.data == 'menu_invisibile':
+        await mostra_menu_invisibile(update, context)
+    elif query.data.startswith('toggle_inv:') or query.data.startswith('toggle_inv_'):
+        indirizzo_ip = query.data.split(':', 1)[1] if ':' in query.data else query.data.rsplit('_', 1)[1]
+        await toggle_modalita_invisibile(update, context, indirizzo_ip)
     elif query.data == 'manutenzione_on_global':
         if not modalita_manutenzione:
             await avvia_manutenzione(update, context)
@@ -772,7 +825,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         minuti = int(query.data.split('_')[2])
         manutenzione_programmata_scadenza = datetime.now() + timedelta(minutes=minuti)
         save_maintenance_data(global_expiry=manutenzione_programmata_scadenza, global_manual=False)
-        await invia_messaggio(f"Manutenzione temporanea attivata per {minuti} minuti.", chat_id)
+        fine_orario = manutenzione_programmata_scadenza.strftime('%H:%M:%S')
+        await invia_messaggio(f"⏳ Manutenzione temporanea attivata per {minuti} minuti (fine prevista: ore {fine_orario}).", chat_id)
         if not modalita_manutenzione:
             await avvia_manutenzione(update, context)
     elif query.data.startswith("sys_adv_info:") or query.data.startswith("system_advance_info_"):
@@ -855,7 +909,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dispositivi_manutenzione_scadenza[indirizzo_ip] = scadenza
         save_maintenance_data(individual_expiries=dispositivi_manutenzione_scadenza)
         await manutenzione(update, context, "on", nome_dispositivo, indirizzo_ip)
-        await invia_messaggio(f"Manutenzione temporanea per {nome_dispositivo} attivata per {minuti} minuti.", chat_id)
+        fine_orario = scadenza.strftime('%H:%M:%S')
+        await invia_messaggio(f"⏳ Manutenzione temporanea per {nome_dispositivo} attivata per {minuti} minuti (fine prevista: ore {fine_orario}).", chat_id)
     # Gestione della conferma di aggiunta
     elif query.data.startswith("conferma_aggiunta:") or query.data.startswith("conferma_aggiunta_"):
         conferma = "si" if "si" in query.data else "no"
@@ -921,30 +976,102 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @richiede_autorizzazione
 async def menu_manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stato_info = "Disattivata"
+    if modalita_manutenzione:
+        if manutenzione_programmata_scadenza:
+            stato_info = f"Attiva temporanea ({format_tempo_residuo(manutenzione_programmata_scadenza)})"
+        else:
+            stato_info = "Attiva (Manuale)"
     keyboard = [
         [InlineKeyboardButton("✅ Attiva (ON)", callback_data='manutenzione_on_global'),
          InlineKeyboardButton("❌ Disattiva (OFF)", callback_data='manutenzione_off_global')],
         [InlineKeyboardButton("🔧 Manutenzione Dispositivo", callback_data='manutenzione_dispositivo')]
     ]
-    await invia_messaggio("Gestione Manutenzione Globale:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+    await invia_messaggio(f"Gestione Manutenzione Globale:\nStato attuale: {stato_info}", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
 @richiede_autorizzazione
 async def menu_manutenzione_temporanea(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    testo = "Seleziona la durata della manutenzione:"
+    if modalita_manutenzione and manutenzione_programmata_scadenza:
+        testo = f"Manutenzione temporanea già attiva:\n⏳ {format_tempo_residuo(manutenzione_programmata_scadenza)}\n\nPuoi reimpostare la durata:"
     keyboard = [
         [InlineKeyboardButton("30 Minuti", callback_data='manutenzione_temp_30'),
          InlineKeyboardButton("1 Ora", callback_data='manutenzione_temp_60'),
          InlineKeyboardButton("2 Ore", callback_data='manutenzione_temp_120')]
     ]
-    await invia_messaggio("Seleziona la durata della manutenzione:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+    await invia_messaggio(testo, update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
 
 @richiede_autorizzazione
 async def menu_gestione_dispositivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("Aggiungi", callback_data='aggiungi_dispositivo_callback'),
-         InlineKeyboardButton("Modifica", callback_data='modifica_dispositivo'),
-         InlineKeyboardButton("Cancella", callback_data='rimuovi_dispositivo')]
+        [InlineKeyboardButton("➕ Aggiungi", callback_data='aggiungi_dispositivo_callback'),
+         InlineKeyboardButton("✏️ Modifica", callback_data='modifica_dispositivo'),
+         InlineKeyboardButton("🗑️ Cancella", callback_data='rimuovi_dispositivo')],
+        [InlineKeyboardButton("👻 Modalità Invisibile", callback_data='menu_invisibile')]
     ]
     await invia_messaggio("Gestione Dispositivo:", update.effective_chat.id, reply_markup=InlineKeyboardMarkup(keyboard))
+
+@richiede_autorizzazione
+async def mostra_menu_invisibile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    with get_db_cursor() as cursor:
+        cursor.execute("SELECT Nome, IP, Invisibile FROM monitor ORDER BY ID")
+        dispositivi = cursor.fetchall()
+
+    if not dispositivi:
+        await invia_messaggio("Nessun dispositivo configurato nel sistema.", chat_id)
+        return
+
+    pulsanti = []
+    for item in dispositivi:
+        nome = item[0]
+        ip = item[1]
+        is_inv = item[2] if len(item) > 2 else False
+        icona = "👻" if is_inv else "👁️"
+        stato_txt = "Invisibile" if is_inv else "Monitorato"
+        pulsanti.append(InlineKeyboardButton(f"{icona} {nome} ({stato_txt})", callback_data=f"toggle_inv:{ip}"))
+
+    keyboard = InlineKeyboardMarkup([[btn] for btn in pulsanti])
+    messaggio = (
+        "👻 <b>Modalità Invisibile per Dispositivo</b>\n\n"
+        "I dispositivi invisibili:\n"
+        "• Non vengono pingati dal ciclo di monitoraggio\n"
+        "• Non generano notifiche di disconnessione periodiche\n"
+        "• Non bloccano l'allarme generale <i>'Tutti Offline'</i> durante i blackout\n"
+        "• <b>Restano sempre interrogabili da 🖥️ System Advance</b>\n\n"
+        "Tocca un dispositivo per attivare o disattivare la modalità invisibile:"
+    )
+    if update.callback_query and update.callback_query.message:
+        try:
+            await update.callback_query.edit_message_text(messaggio, reply_markup=keyboard, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    await invia_messaggio(messaggio, chat_id, reply_markup=keyboard)
+
+@richiede_autorizzazione
+async def toggle_modalita_invisibile(update: Update, context: ContextTypes.DEFAULT_TYPE, indirizzo_ip: str):
+    chat_id = update.effective_chat.id
+    nome_dispositivo = get_device_name_by_ip(indirizzo_ip)
+    
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute("SELECT Invisibile FROM monitor WHERE IP = %s", (indirizzo_ip,))
+        row = cursor.fetchone()
+        stato_attuale = bool(row[0]) if row else False
+        nuovo_stato = not stato_attuale
+        cursor.execute("UPDATE monitor SET Invisibile = %s WHERE IP = %s", (nuovo_stato, indirizzo_ip))
+
+    if nuovo_stato:
+        msg = f"👻 <b>{nome_dispositivo}</b> ({indirizzo_ip}) è ora in <b>Modalità Invisibile</b>.\nEscluso dal monitoraggio ping e dall'allarme globale 'Tutti Offline', ma resta accessibile in System Advance."
+        scrivi_log(f"Modalità Invisibile ATTIVATA: {nome_dispositivo} - {indirizzo_ip}")
+    else:
+        msg = f"👁️ <b>{nome_dispositivo}</b> ({indirizzo_ip}) è tornato in <b>Modalità Normale</b>.\nMonitoraggio ping ripristinato."
+        scrivi_log(f"Modalità Invisibile DISATTIVATA: {nome_dispositivo} - {indirizzo_ip}")
+
+    if update.callback_query:
+        await update.callback_query.answer(f"{'Invisibile' if nuovo_stato else 'Normale'}: {nome_dispositivo}")
+    await invia_messaggio(msg, chat_id)
+    await mostra_menu_invisibile(update, context)
 
 @richiede_autorizzazione
 async def manutenzione(update: Update, context: ContextTypes.DEFAULT_TYPE, action, nome_dispositivo, indirizzo_ip):
@@ -989,9 +1116,11 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
             scadenza = dispositivi_manutenzione_scadenza.get(ip)
             if scadenza:
                 rimanente = scadenza - datetime.now()
-                minuti = int(rimanente.total_seconds() / 60)
-                if minuti > 0:
-                    label += f" ({minuti}m)"
+                secondi = int(rimanente.total_seconds())
+                if secondi > 0:
+                    minuti = secondi // 60
+                    sec = secondi % 60
+                    label += f" ({minuti}m {sec:02d}s)" if minuti > 0 else f" ({sec}s)"
                 else:
                     label += " (Scaduto)"
             else:
@@ -1007,13 +1136,17 @@ async def gestisci_manutenzione(update: Update, context: ContextTypes.DEFAULT_TY
 async def system_advance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     with get_db_cursor() as cursor:
-        query = ("SELECT Nome, IP FROM monitor")
+        query = ("SELECT Nome, IP, Invisibile FROM monitor")
         cursor.execute(query)
         dispositivi = cursor.fetchall()
 
     pulsanti = []
-    for dispositivo in dispositivi:
-        pulsanti.append(InlineKeyboardButton(dispositivo[0], callback_data=f"sys_adv_info:{dispositivo[1]}"))
+    for item in dispositivi:
+        nome = item[0]
+        ip = item[1]
+        is_inv = item[2] if len(item) > 2 else False
+        label = f"👻 {nome}" if is_inv else nome
+        pulsanti.append(InlineKeyboardButton(label, callback_data=f"sys_adv_info:{ip}"))
     keyboard = InlineKeyboardMarkup([pulsanti[i:i+3] for i in range(0, len(pulsanti), 3)])
 
     await invia_messaggio("Seleziona il dispositivo per informazioni avanzate:", chat_id, reply_markup=keyboard)
@@ -1023,30 +1156,31 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
     global modalita_manutenzione, manutenzione_programmata_scadenza, dispositivi_manutenzione_scadenza, manutenzione_reason
     stati_connessioni = []
     with get_db_cursor() as cursor:
-        query = ("SELECT Nome, IP, Maintenence FROM monitor")
+        query = ("SELECT Nome, IP, Maintenence, Invisibile FROM monitor")
         cursor.execute(query)
         dispositivi = cursor.fetchall()
 
     if modalita_manutenzione:
-        header = "🔧 **Modalità Manutenzione Globale Attiva**"
+        header = "🔧 <b>Modalità Manutenzione Globale Attiva</b>"
         if manutenzione_reason:
             header += f"\nMotivo: {manutenzione_reason}"
         if manutenzione_programmata_scadenza:
-            rimanente = manutenzione_programmata_scadenza - datetime.now()
-            minuti = int(rimanente.total_seconds() / 60)
-            if minuti > 0:
-                header += f"\nScadenza tra: {minuti} min"
+            header += f"\n⏳ {format_tempo_residuo(manutenzione_programmata_scadenza)}"
         stati_connessioni.append(header + "\n")
 
-    for nome_dispositivo, indirizzo_ip, stato_manutenzione in dispositivi:
-        if modalita_manutenzione or stato_manutenzione:
+    for item in dispositivi:
+        nome_dispositivo = item[0]
+        indirizzo_ip = item[1]
+        stato_manutenzione = item[2]
+        is_invisibile = item[3] if len(item) > 3 else False
+
+        if is_invisibile:
+            stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : 👻 Invisibile (Solo System Advance)")
+        elif modalita_manutenzione or stato_manutenzione:
             scadenza_indiv = dispositivi_manutenzione_scadenza.get(indirizzo_ip)
             tempo_extra = ""
             if scadenza_indiv:
-                rimanente = scadenza_indiv - datetime.now()
-                minuti = int(rimanente.total_seconds() / 60)
-                if minuti > 0:
-                    tempo_extra = f" ({minuti} min rimanenti)"
+                tempo_extra = f" ({format_tempo_residuo(scadenza_indiv)})"
 
             stato_desc = f"Manutenzione{tempo_extra}"
             if modalita_manutenzione and stato_manutenzione:
@@ -1062,7 +1196,7 @@ async def verifica_stato_connessioni(update: Update, context: ContextTypes.DEFAU
             stati_connessioni.append(f"{nome_dispositivo} - {indirizzo_ip} : {stato}")
 
     messaggio = "\n".join(stati_connessioni)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=messaggio, parse_mode="HTML")
 
 @richiede_autorizzazione
 async def invia_log_giornaliero(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1708,7 +1842,7 @@ async def monitoraggio():
 
                 try:
                     with get_db_cursor() as cursor:
-                        query = ("SELECT Nome, IP, Maintenence FROM monitor")
+                        query = ("SELECT Nome, IP, Maintenence, Invisibile FROM monitor")
                         cursor.execute(query)
                         dispositivi = cursor.fetchall()
                 except mysql.connector.Error as err:
@@ -1730,10 +1864,15 @@ async def monitoraggio():
                     await asyncio.sleep(check_interval)
                     continue
 
-                for nome_dispositivo, indirizzo_ip, in_manutenzione_singola in dispositivi:
+                for item in dispositivi:
+                    nome_dispositivo = item[0]
+                    indirizzo_ip = item[1]
+                    in_manutenzione_singola = item[2]
+                    is_invisibile = item[3] if len(item) > 3 else False
+
                     last_monitor_heartbeat = time.time()
-                    if in_manutenzione_singola:
-                        # Se il dispositivo è in manutenzione singola, azzeriamo i contatori transitori
+                    if in_manutenzione_singola or is_invisibile:
+                        # Se il dispositivo è in manutenzione singola o invisibile, azzeriamo i contatori transitori
                         consecutive_failures[indirizzo_ip] = 0
                         consecutive_successes[indirizzo_ip] = 0
                         continue
@@ -1791,8 +1930,9 @@ async def monitoraggio():
                 # Gestione Allarme Generale "Tutti Offline" basato sugli stati confermati
                 if dispositivi_monitorati > 0:
                     tutti_offline = all(
-                        stato_precedente_connessioni.get(ip) is False
-                        for _, ip, in_m in dispositivi if not in_m
+                        stato_precedente_connessioni.get(item[1]) is False
+                        for item in dispositivi
+                        if not item[2] and not (item[3] if len(item) > 3 else False)
                     )
                 else:
                     tutti_offline = False

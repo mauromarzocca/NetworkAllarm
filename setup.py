@@ -263,10 +263,15 @@ def setup_db(conf):
             ID INT AUTO_INCREMENT PRIMARY KEY,
             Nome VARCHAR(255) NOT NULL,
             IP VARCHAR(255) NOT NULL UNIQUE,
-            Maintenence BOOLEAN DEFAULT FALSE
+            Maintenence BOOLEAN DEFAULT FALSE,
+            Invisibile BOOLEAN DEFAULT FALSE
         ) AUTO_INCREMENT=1;
         """
         cursor.execute(create_table_query)
+        try:
+            cursor.execute("ALTER TABLE monitor ADD COLUMN Invisibile BOOLEAN DEFAULT FALSE;")
+        except Exception:
+            pass
         print("Tabella 'monitor' verificata.")
 
         # Insert Device
